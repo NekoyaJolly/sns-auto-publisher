@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -110,6 +112,26 @@ class Repository:
         *,
         error_message: str | None = None,
     ) -> PostJob:
+        post_job.status = _enum_value(status)
+        post_job.error_message = error_message
+        self.session.flush()
+        return post_job
+
+    def update_post_job_caption(
+        self,
+        post_job: PostJob,
+        *,
+        caption: str,
+        hashtags: list[str],
+        alt_text: str,
+        ai_warnings: list[str],
+        status: PostJobStatus | str,
+        error_message: str | None = None,
+    ) -> PostJob:
+        post_job.caption = caption
+        post_job.hashtags_json = json.dumps(hashtags, ensure_ascii=False)
+        post_job.alt_text = alt_text
+        post_job.ai_warnings_json = json.dumps(ai_warnings, ensure_ascii=False)
         post_job.status = _enum_value(status)
         post_job.error_message = error_message
         self.session.flush()

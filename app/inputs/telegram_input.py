@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config.settings import Settings
 from app.db.models import PostJobStatus
 from app.db.session import session_scope
+from app.services.caption_service import CaptionGenerator, CaptionService
 from app.services.ingest_service import IncomingMediaFile, IngestService
 from app.services.media_process_service import MediaProcessService
 from app.services.notify_service import NotifyService, ReceiveNotification
@@ -41,10 +42,12 @@ class TelegramInput:
         settings: Settings,
         session_factory: sessionmaker[Session],
         storage: LocalStorage,
+        caption_generator: CaptionGenerator | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.storage = storage
+        self.caption_generator = caption_generator
 
     def run_polling(self) -> None:
         if not self.settings.telegram_bot_token:
@@ -107,9 +110,18 @@ class TelegramInput:
                     await notify_service.notify_rejected(chat_id, result.post_job.error_message or "メディア処理に失敗しました")
                     return
 
+                CaptionService(
+                    session=session,
+                    settings=self.settings,
+                    generator=self.caption_generator,
+                ).caption_post_job(result.post_job)
+                if result.post_job.status in {PostJobStatus.FAILED.value, PostJobStatus.REJECTED.value}:
+                    await notify_service.notify_rejected(chat_id, result.post_job.error_message or "AI生成に失敗しました")
+                    return
+
                 post_job_id = result.post_job.id
                 media_count = len(result.media_assets)
-                detail = "動画処理完了" if has_video else None
+                detail = "動画処理完了 / AI生成完了" if has_video else "AI生成完了"
             await notify_service.notify_received(
                 chat_id,
                 ReceiveNotification(post_job_id=post_job_id, media_count=media_count, detail=detail),

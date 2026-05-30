@@ -9,6 +9,7 @@ from app.config.settings import Settings
 from app.db.models import MediaAsset, PostJob
 from app.db.session import create_app_engine, create_session_factory, init_db, session_scope
 from app.inputs.telegram_input import TelegramInput
+from app.services.caption_service import CaptionPayload
 from app.storage.local_storage import LocalStorage
 
 
@@ -71,7 +72,12 @@ def test_telegram_input_handles_photo_and_creates_raw_records(tmp_path: Path):
     init_db(engine)
     session_factory = create_session_factory(engine)
     storage = LocalStorage(settings=settings)
-    telegram_input = TelegramInput(settings=settings, session_factory=session_factory, storage=storage)
+    telegram_input = TelegramInput(
+        settings=settings,
+        session_factory=session_factory,
+        storage=storage,
+        caption_generator=FakeCaptionGenerator(),
+    )
     bot = FakeBot(content=_image_bytes(tmp_path / "telegram.jpg"))
     context = SimpleNamespace(bot=bot)
     update = SimpleNamespace(
@@ -97,7 +103,8 @@ def test_telegram_input_handles_photo_and_creates_raw_records(tmp_path: Path):
     assert Path(media_assets[0].processed_path).exists()
     assert Path(media_assets[0].thumbnail_path).exists()
     assert media_assets[0].media_type == "image"
-    assert bot.messages == [("12345", "受信しました。job_id=1 / media=1")]
+    assert post_jobs[0].status == "captioned"
+    assert bot.messages == [("12345", "受信しました。job_id=1 / media=1 / AI生成完了")]
 
 
 def _build_telegram_input(tmp_path: Path, allowed_chat_ids: list[str] | None = None) -> TelegramInput:
@@ -117,3 +124,14 @@ def _image_bytes(path: Path) -> bytes:
     image = Image.new("RGB", (320, 240), (40, 90, 160))
     image.save(path, format="JPEG")
     return path.read_bytes()
+
+
+class FakeCaptionGenerator:
+    def generate(self, post_job: PostJob) -> CaptionPayload:
+        return CaptionPayload(
+            caption="テスト投稿です",
+            hashtags=["#test"],
+            alt_text="青い画像のテストです",
+            warnings=[],
+            should_post=True,
+        )

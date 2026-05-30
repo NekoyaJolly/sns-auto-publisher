@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     telegram_allowed_chat_ids: list[str] = Field(default_factory=list)
 
     openai_api_key: str = ""
+    openai_model: str = "gpt-5.4-mini"
 
     x_api_key: str = ""
     x_api_secret: str = ""
