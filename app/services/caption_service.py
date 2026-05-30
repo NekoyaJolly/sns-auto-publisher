@@ -53,6 +53,8 @@ class OpenAICaptionGenerator:
     def __init__(self, settings: Settings) -> None:
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEYが設定されていません")
+        if not settings.openai_model:
+            raise ValueError("OPENAI_MODELが設定されていません")
         from openai import OpenAI
 
         self.settings = settings

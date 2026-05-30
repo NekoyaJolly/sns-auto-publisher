@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     telegram_allowed_chat_ids: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.4-mini"
+    openai_model: str = ""
 
     x_api_key: str = ""
     x_api_secret: str = ""
