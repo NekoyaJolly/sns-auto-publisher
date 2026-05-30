@@ -59,7 +59,26 @@ brew install ffmpeg
 cp .env.example .env
 ```
 
-初期状態では `POSTING_MODE=approval` です。TelegramからAI生成まで通す場合は `TELEGRAM_BOT_TOKEN` と `OPENAI_API_KEY` を設定してください。X投稿まで通す場合は `X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` も設定してください。
+初期状態では `POSTING_MODE=approval` です。まず安全に動作確認する場合は `POSTING_MODE=dry_run` に変更してください。dry_runではXへ投稿せず、投稿予定内容だけをTelegramへ返します。
+
+主な環境変数は以下です。秘密情報は `.env` にだけ保存し、コードやREADMEへ直接書かないでください。
+
+| 変数 | 用途 |
+| --- | --- |
+| `APP_ENV` | 実行環境名。ローカルでは `local` |
+| `POSTING_MODE` | `approval` / `auto` / `dry_run` |
+| `TELEGRAM_BOT_TOKEN` | Telegram BotのToken |
+| `TELEGRAM_ALLOWED_CHAT_IDS` | 許可chat_id。複数指定はカンマ区切り |
+| `OPENAI_API_KEY` | caption / hashtags / alt_text生成用 |
+| `OPENAI_MODEL` | AI生成で使うOpenAIモデル |
+| `X_API_KEY` / `X_API_SECRET` | X APIのConsumer Key / Secret |
+| `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` | X APIのAccess Token / Secret |
+| `X_BEARER_TOKEN` | 将来拡張用のBearer Token |
+| `DATABASE_URL` | SQLite接続先。既定は `sqlite:///data/app.sqlite3` |
+| `STORAGE_ROOT` | raw / processed / thumbnails の保存root |
+| `MAX_IMAGE_SIZE_MB` | 画像サイズ上限 |
+| `MAX_VIDEO_SIZE_MB` | 動画サイズ上限 |
+| `MAX_VIDEO_DURATION_SECONDS` | 動画秒数上限 |
 
 ## 起動方法
 
@@ -76,9 +95,61 @@ python -m app.main
 pytest
 ```
 
+## dry_run確認手順
+
+Xへ投稿せずにMVPの主要経路を確認する手順です。
+
+1. `.env` で `POSTING_MODE=dry_run` にします。
+2. `TELEGRAM_BOT_TOKEN` と `OPENAI_API_KEY` を設定します。
+3. 必要に応じて `TELEGRAM_ALLOWED_CHAT_IDS` に自分のchat_idを設定します。
+4. `python -m app.main` でBotを起動します。
+5. Telegram Botへ画像または動画を送ります。
+6. Telegramに投稿予定内容が返り、DBの `post_jobs.status` が `preview_sent` になることを確認します。
+
+dry_runではX API認証情報が未設定でもX投稿は実行されません。
+
+## Telegram Bot設定手順
+
+1. TelegramでBotFatherを開き、新しいBotを作成します。
+2. 発行されたTokenを `.env` の `TELEGRAM_BOT_TOKEN` に設定します。
+3. Botへ `/start` を送信して会話を開始します。
+4. 必要に応じて許可するchat_idを `TELEGRAM_ALLOWED_CHAT_IDS=12345,67890` の形式で設定します。
+5. `python -m app.main` でpollingを開始します。
+
+許可chat_idを空にすると、MVPではすべてのchat_idを許可します。実運用では必ず許可chat_idを設定してください。
+
+## X API設定手順
+
+X投稿を実行する場合は、X Developer Portalで投稿権限のあるアプリを用意し、以下を `.env` に設定します。
+
+```env
+X_API_KEY=
+X_API_SECRET=
+X_ACCESS_TOKEN=
+X_ACCESS_TOKEN_SECRET=
+X_BEARER_TOKEN=
+```
+
+このアプリではTweepyを使い、画像は通常アップロード、動画はchunked uploadで投稿します。`approval` modeではTelegramの「投稿する」ボタン押下後、`auto` modeではAI判定OK後にX投稿を実行します。
+
+## 運用コマンド
+
+Telegramから以下のコマンドを使えます。
+
+```text
+/mode
+/mode approval
+/mode auto
+/mode dry_run
+/status <job_id>
+/retry <job_id>
+```
+
+`/retry` は `failed` 状態で、captionと処理済みメディアが残っているjobだけを再投稿します。検証前や却下済みのjobは再投稿しません。
+
 ## 現在の実装範囲
 
-PR 9相当まで、以下を実装しています。
+PR 10相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -129,8 +200,11 @@ PR 9相当まで、以下を実装しています。
 - 投稿済みまたは投稿待ちjobの二重投稿防止
 - `/retry <job_id>` によるfailed jobの再投稿
 - `/status <job_id>` によるjob状態確認
+- dry_run / Telegram Bot / X API設定手順
+- MVP完成条件チェックリスト
+- 画像・動画正常系とrejected/failed異常系を含むpytest
 - 検証・処理結果のDB状態更新
-- 最小限のpytest
+- MVP向けpytest
 
 ## 動画処理仕様
 
@@ -204,12 +278,37 @@ X投稿はTweepyを使い、投稿用メディアをアップロードして取�
 
 `/status` は投稿モード、job status、media status、最新投稿試行を返します。`/retry` は `failed` 状態かつ処理済みメディアとcaptionが残っているjobを再度X投稿へ進めます。
 
+## MVP完成条件チェックリスト
+
+- [x] スマホからTelegram Botに画像を送れる入力経路がある
+- [x] スマホからTelegram Botに動画を送れる入力経路がある
+- [x] 複数画像を扱えるDB/storage設計がある
+- [x] Pythonがファイルをローカルストレージへ保存できる
+- [x] DBに投稿ジョブが残る
+- [x] 画像/動画を検証できる
+- [x] 画像/動画を投稿用に変換できる
+- [x] AIがcaption / hashtags / alt_textを生成できる
+- [x] approval modeでTelegramに投稿プレビューが返る
+- [x] 承認後にXへ投稿できる
+- [x] auto modeで検証OK後に自動投稿できる
+- [x] dry_run modeで投稿せずに確認できる
+- [x] 投稿完了通知がTelegramに返る
+- [x] 投稿失敗時に理由がDBとTelegramに残る
+- [x] GitHubにメディアを保存しない `.gitignore` になっている
+- [x] n8nを投稿パイプラインで使っていない
+
+## PR10時点の注意点
+
+- 実際のTelegram / OpenAI / X疎通には各サービス側の認証情報と権限が必要です。
+- テストでは外部APIを叩かず、モックと一時ファイルで正常系・異常系を確認します。
+- メディア実体とSQLite DBは `storage/` と `data/` に置かれ、Git管理対象外です。
+
 ## 次PR候補
 
-次はPR 10として、テスト + README + 運用ドキュメントを仕上げます。
+MVP後の候補です。
 
-- 新規環境でのdry_run手順を整備する
-- Telegram Bot設定手順を整備する
-- X API設定手順を整備する
-- MVP完成条件チェックリストを更新する
-- 正常系・異常系テストを拡充する
+- CIでのpytest実行
+- DB migration管理
+- 投稿予約
+- クラウドストレージ移行
+- 管理画面

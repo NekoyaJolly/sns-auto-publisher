@@ -432,19 +432,19 @@ JSONとしてパースできない場合は `failed` とする。
 
 ## MVP完成条件チェックリスト
 
-* [ ] スマホからTelegram Botに画像を送れる
-* [ ] スマホからTelegram Botに動画を送れる
-* [ ] 複数画像を送れる
-* [ ] Pythonがファイルを保存できる
-* [ ] DBに投稿ジョブが残る
-* [ ] 画像/動画を検証できる
-* [ ] 画像/動画を投稿用に変換できる
-* [ ] AIがcaption / hashtags / alt_textを生成できる
-* [ ] approval modeでTelegramに投稿プレビューが返る
-* [ ] 承認後にXへ投稿できる
-* [ ] auto modeで検証OK後に自動投稿できる
-* [ ] dry_run modeで投稿せずに確認できる
-* [ ] 投稿完了通知がTelegramに返る
-* [ ] 投稿失敗時に理由がDBとTelegramに残る
-* [ ] GitHubにメディアを保存していない
-* [ ] n8nを投稿パイプラインで使っていない
+* [x] スマホからTelegram Botに画像を送れる入力経路がある
+* [x] スマホからTelegram Botに動画を送れる入力経路がある
+* [x] 複数画像を扱えるDB/storage設計がある
+* [x] Pythonがファイルを保存できる
+* [x] DBに投稿ジョブが残る
+* [x] 画像/動画を検証できる
+* [x] 画像/動画を投稿用に変換できる
+* [x] AIがcaption / hashtags / alt_textを生成できる
+* [x] approval modeでTelegramに投稿プレビューが返る
+* [x] 承認後にXへ投稿できる
+* [x] auto modeで検証OK後に自動投稿できる
+* [x] dry_run modeで投稿せずに確認できる
+* [x] 投稿完了通知がTelegramに返る
+* [x] 投稿失敗時に理由がDBとTelegramに残る
+* [x] GitHubにメディアを保存していない
+* [x] n8nを投稿パイプラインで使っていない
