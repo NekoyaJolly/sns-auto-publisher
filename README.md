@@ -57,7 +57,8 @@ cp .env.example .env
 
 ## 起動方法
 
-現時点では基盤の起動確認として、storageディレクトリ作成とSQLiteテーブル作成を行います。
+`TELEGRAM_BOT_TOKEN` が未設定の場合は、基盤の起動確認としてstorageディレクトリ作成とSQLiteテーブル作成だけを行って終了します。
+Tokenを設定している場合は、Telegram Botのpollingを開始します。
 
 ```bash
 python -m app.main
@@ -71,7 +72,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 1相当として、以下を実装しています。
+PR 2相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -79,15 +80,20 @@ PR 1相当として、以下を実装しています。
 - `post_jobs` / `media_assets` / `post_attempts` / `app_settings` モデル
 - `post_job` と `media_asset` を作成できるrepository層
 - `storage/raw` / `storage/processed` / `storage/thumbnails` を扱うローカルストレージ基盤
+- Telegram Bot入力アダプター
+- 許可済みchat_idチェック
+- Telegramから受け取った画像・動画のraw保存
+- 受信時の `post_jobs` / `media_assets` 登録
+- Telegramへの受信通知
 - 最小限のpytest
 
 ## 次PR候補
 
-次はPR 2として、Telegram受信とraw保存を実装します。
+次はPR 3として、メディア検証と画像処理を実装します。
 
-- Telegram Bot入力アダプター
-- 許可済みchat_idチェック
-- 画像・動画ファイルの受信
-- rawファイル保存
-- `post_jobs` / `media_assets` 登録
-- Telegramへの受信通知
+- 画像・動画以外の拒否
+- 壊れた画像のfailed記録
+- 画像サイズ・MIME検証
+- EXIF削除
+- 画像リサイズ
+- サムネイル生成

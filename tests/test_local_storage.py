@@ -26,3 +26,15 @@ def test_storage_paths_can_be_generated_by_area(tmp_path: Path):
     assert raw_path.parent.is_dir()
     assert processed_path.parent.is_dir()
     assert thumbnail_path.parent.is_dir()
+
+
+def test_storage_can_save_bytes_without_overwriting(tmp_path: Path):
+    storage = LocalStorage(storage_root=tmp_path / "storage")
+
+    first_path = storage.save_bytes("raw", 7, "photo.jpg", b"first")
+    second_path = storage.save_bytes("raw", 7, "photo.jpg", b"second")
+
+    assert first_path.name == "photo.jpg"
+    assert second_path.name == "photo-1.jpg"
+    assert first_path.read_bytes() == b"first"
+    assert second_path.read_bytes() == b"second"
