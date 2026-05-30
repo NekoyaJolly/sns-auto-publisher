@@ -136,8 +136,10 @@ def test_build_caption_input_includes_processed_image_bytes(tmp_path: Path):
 
     user_content = request_input[1]["content"]
     assert isinstance(user_content, list)
+    assert "具体物・色・配置・状態" in str(request_input[0]["content"])
     image_part = user_content[1]
     assert image_part["type"] == "input_image"
+    assert image_part["detail"] == "high"
     assert str(image_part["image_url"]).startswith("data:image/jpeg;base64,")
 
 
