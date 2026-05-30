@@ -78,7 +78,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 8相当まで、以下を実装しています。
+PR 9相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -123,6 +123,12 @@ PR 8相当まで、以下を実装しています。
 - 投稿成功時の `x_post_id` 保存
 - 投稿成功/失敗の `post_attempts` 記録
 - 投稿失敗時の `failed` 状態更新
+- Telegramへの投稿完了通知
+- Telegramへの投稿失敗通知
+- `file_hash` による重複メディア検知
+- 投稿済みまたは投稿待ちjobの二重投稿防止
+- `/retry <job_id>` によるfailed jobの再投稿
+- `/status <job_id>` によるjob状態確認
 - 検証・処理結果のDB状態更新
 - 最小限のpytest
 
@@ -183,12 +189,27 @@ X投稿はTweepyを使い、投稿用メディアをアップロードして取�
 
 投稿成功時は `post_jobs.x_post_id` にX側の投稿IDを保存し、`post_jobs.status` を `published` にします。投稿失敗時は `post_attempts` に失敗理由を残し、`post_jobs.status` を `failed` にします。
 
+## 通知・リトライ・重複防止
+
+投稿成功時はTelegramへ `job_id` と `x_post_id` を通知します。投稿失敗時はDBの `post_jobs.error_message` と `post_attempts.error_message` に理由を残し、Telegramにも失敗理由を通知します。
+
+同一ファイルの二重投稿を避けるため、raw保存時に `file_hash` を計算し、既存のcaption済み・プレビュー待ち・投稿中・投稿済みjobと一致する場合は新しいjobを `rejected` にします。
+
+運用補助コマンドとして以下を追加しています。
+
+```text
+/status <job_id>
+/retry <job_id>
+```
+
+`/status` は投稿モード、job status、media status、最新投稿試行を返します。`/retry` は `failed` 状態かつ処理済みメディアとcaptionが残っているjobを再度X投稿へ進めます。
+
 ## 次PR候補
 
-次はPR 9として、通知 + リトライ + 重複防止を実装します。
+次はPR 10として、テスト + README + 運用ドキュメントを仕上げます。
 
-- 投稿完了通知をTelegramへ返す
-- 投稿失敗通知をTelegramへ返す
-- file_hashで重複検知する
-- 投稿済みjobの二重投稿を防ぐ
-- `/retry <job_id>` と `/status <job_id>` を追加する
+- 新規環境でのdry_run手順を整備する
+- Telegram Bot設定手順を整備する
+- X API設定手順を整備する
+- MVP完成条件チェックリストを更新する
+- 正常系・異常系テストを拡充する

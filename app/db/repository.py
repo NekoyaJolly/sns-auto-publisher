@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.db.models import (
@@ -58,6 +59,7 @@ class Repository:
         height: int | None = None,
         duration_seconds: float | None = None,
         status: MediaAssetStatus | str = MediaAssetStatus.RECEIVED,
+        error_message: str | None = None,
     ) -> MediaAsset:
         media_asset = MediaAsset(
             post_job_id=post_job_id,
@@ -72,6 +74,7 @@ class Repository:
             height=height,
             duration_seconds=duration_seconds,
             status=_enum_value(status),
+            error_message=error_message,
         )
         self.session.add(media_asset)
         self.session.flush()
@@ -104,6 +107,20 @@ class Repository:
 
     def get_media_asset(self, media_asset_id: int) -> MediaAsset | None:
         return self.session.get(MediaAsset, media_asset_id)
+
+    def find_duplicate_media_asset(
+        self,
+        *,
+        file_hash: str,
+        exclude_post_job_id: int | None = None,
+        post_job_statuses: set[PostJobStatus | str] | None = None,
+    ) -> MediaAsset | None:
+        statement = select(MediaAsset).join(PostJob).where(MediaAsset.file_hash == file_hash)
+        if exclude_post_job_id is not None:
+            statement = statement.where(MediaAsset.post_job_id != exclude_post_job_id)
+        if post_job_statuses is not None:
+            statement = statement.where(PostJob.status.in_([_enum_value(status) for status in post_job_statuses]))
+        return self.session.scalars(statement.order_by(MediaAsset.created_at.asc())).first()
 
     def require_post_job(self, post_job_id: int) -> PostJob:
         post_job = self.get_post_job(post_job_id)
