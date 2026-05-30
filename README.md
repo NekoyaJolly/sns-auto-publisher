@@ -1,66 +1,93 @@
-# agents-md-template
+# Sns Auto Publisher
 
-複数 AI コーディングエージェント (Claude Code / Cursor / Gemini 等) を 1 プロジェクトで運用するための **AGENTS.md 系ルールセットのテンプレート**。
+## プロジェクト概要
 
-`AGENTS.md` を正本とし、各 AI 固有のシム (`CLAUDE.md` / `.cursorrules` / `GEMINI.md`) が同じルールを参照する構造になっています。実プロジェクトで使い倒した結果を抽出してテンプレ化したもので、初期セットアップから「ルール分散による認識ズレ」「ファイル増殖」「ドキュメント増殖」を抑えられます。
+Telegram Botに送信された画像・動画をPythonアプリで受信し、ローカル保存、検証、変換、AI投稿文生成、Telegramプレビュー、承認または自動投稿、X投稿、完了通知までを扱うSNS投稿オーケストレーターです。
 
-## 含まれるもの
+GitHubはソースコード管理とCI用途に限定し、画像・動画などのメディア実体は保存しません。n8nやGitHub Actionsを投稿パイプラインの中核にはしません。
 
-| ファイル | 内容 |
-|---|---|
-| `AGENTS.md` | 全エージェント共通ルールの正本テンプレ (§1 読み込み義務 / §2 型安全 / §3 コード品質 / §4 言語規約 / §5 ドキュメント運用 / §6 PR・コミット規約 + ドメイン原則のプレースホルダー + AI 推論品質ガイドライン) |
-| `CLAUDE.md` | Claude Code 固有シム (作業着手前宣言、チケット commit 規約) |
-| `.cursorrules` | Cursor 固有シム (Composer 確認、any/unknown 補完拒否) |
-| `GEMINI.md` | Gemini 固有シム (共通規約遵守、将来追記スロット) |
-| `scripts/README.md` | `scripts/` ディレクトリの登録表 + 用途分類 + one-shot 制限 |
-| `docs/architecture/WORKFLOW.md` | 自走 PR ワークフロー (Copilot inline 対応 / merge polling / post-merge 瞬間チェック / 自動 lint 修正) |
-| `templates/last-mile-rule.md` | Last-Mile Shared Context Protocol を採用するプロジェクト向けの AGENTS.md 挿入テンプレ ([姉妹リポジトリ](https://github.com/NekoyaJolly/last-mile-shared-context) の `templates/AGENTS.last-mile.md` と内容同期) |
-| `LICENSE` | MIT |
+## MVPの目的
 
-## 主な思想
+スマホからTelegram Botへ画像・動画を送るだけで、Pythonアプリが投稿ジョブをDBで管理しながら、検証、変換、AI生成、プレビュー、承認、X投稿、完了通知まで進められる状態をMVPとします。
 
-- **正本 1 つ、シムは誘導**: ルールは `AGENTS.md` に集約。シムは「正本を読め」と誘導するだけ。AI ごとに微妙に違うルールセットを書かない
-- **新規ファイル作成は最終手段**: 「作業の副産物」ではなく「設計上の追加物」として扱う (§5.3)。PR 説明に責務 / 統合しなかった理由 / 寿命 / 削除条件を必須化
-- **ドキュメントはローリング運用**: 正本 + 現在進行中フェーズの指示書 + サマリー 1 件 の 3 種類だけ。完了したフェーズノートは正本に統合してアーカイブ / 削除する (§5.0)
-- **`any` / `unknown` 禁止 (本番コード)**: 外部入力はスキーマで narrow。型チェック抑止コメントの濫用も禁止 (§2)
+## MVP対象
 
-## 使い方
+- Telegram Botからの画像受信
+- Telegram Botからの動画受信
+- 複数画像対応
+- ローカルストレージ保存
+- SQLiteによる状態管理
+- 画像・動画の検証と投稿用変換
+- AIによるcaption / hashtags / alt_text生成
+- Telegram投稿プレビュー
+- approval / auto / dry_run mode
+- X投稿
+- 投稿完了・失敗通知
 
-### A. GitHub Template repository として使う (推奨)
+## MVP対象外
 
-1. GitHub 上で「Use this template」ボタンを押して新規リポジトリを作成
-2. 新リポジトリを `git clone`
-3. このリポジトリの `README.md` (本ファイル) を **新プロジェクトの README に上書き**
-4. `AGENTS.md` 冒頭のコメント指示に従い、プレースホルダーを埋める
-   - `<PROJECT_NAME>`: プロジェクト名
-   - `<DOMAIN>`: ドメイン名 (例: 自律トレーディング AI / SaaS 課金システム)
-   - `<PRIMARY_LANGUAGE>`: 主要言語 (例: 日本語 / English)
-   - 「ドメイン原則」セクション: プロジェクト固有の不変ルールを書く
-   - 「開発運用情報」セクション: コマンド / 構造 / 技術スタックをプロジェクトのものに書き換える
-5. 不要なシムを削除 (例: Cursor を使わないなら `.cursorrules` を削除)
-6. `scripts/` を使い始める時に `scripts/README.md` の登録表に追記
-7. 初回コミット
+- 任意フォルダ監視
+- Google Drive監視
+- メールボックス監視
+- 他メッセンジャー連携
+- 複数SNS投稿
+- 投稿予約
+- 管理画面
+- クラウドストレージ移行
 
-### B. 既存リポジトリに導入する
+## セットアップ手順
 
-1. このリポジトリを `git clone` し、必要なファイルを既存リポジトリにコピー
-2. 上記 A の §4 〜 §6 と同じ作業
+Python 3.11以上を用意し、依存関係をインストールします。
 
-## プレースホルダー一覧
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install -e ".[dev]"
+```
 
-テンプレ化のために以下を残しています。実プロジェクトでは置換してください。
+## `.env` の作り方
 
-| プレースホルダー | 置換例 |
-|---|---|
-| `<PROJECT_NAME>` | `MyAwesomeApp` |
-| `<DOMAIN>` | `EC サイト` / `自律トレーディング AI` |
-| `<PRIMARY_LANGUAGE>` | `日本語` / `English` |
-| `<対象領域>` | サブディレクトリ AGENTS.md を作る時の領域名 |
-| `<build command>` | `npm run build` / `cargo build` 等 |
-| `<test command>` | `npm test` / `pytest` 等 |
-| `<dev command>` | `npm run dev` / `python manage.py runserver` 等 |
+`.env.example` をコピーして `.env` を作成します。
 
+```bash
+cp .env.example .env
+```
 
-## ライセンス
+初期状態では `POSTING_MODE=approval` です。APIキーやBotトークンは後続PRで実API連携を入れるまでは未設定のままで構いません。
 
-[MIT](./LICENSE)
+## 起動方法
+
+現時点では基盤の起動確認として、storageディレクトリ作成とSQLiteテーブル作成を行います。
+
+```bash
+python -m app.main
+```
+
+## テスト方法
+
+```bash
+pytest
+```
+
+## 現在の実装範囲
+
+PR 1相当として、以下を実装しています。
+
+- Pythonプロジェクト基盤
+- `.env` 読み込みを前提にした設定管理
+- SQLite接続とDB初期化
+- `post_jobs` / `media_assets` / `post_attempts` / `app_settings` モデル
+- `post_job` と `media_asset` を作成できるrepository層
+- `storage/raw` / `storage/processed` / `storage/thumbnails` を扱うローカルストレージ基盤
+- 最小限のpytest
+
+## 次PR候補
+
+次はPR 2として、Telegram受信とraw保存を実装します。
+
+- Telegram Bot入力アダプター
+- 許可済みchat_idチェック
+- 画像・動画ファイルの受信
+- rawファイル保存
+- `post_jobs` / `media_assets` 登録
+- Telegramへの受信通知

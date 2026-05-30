@@ -13,3 +13,26 @@ Thumbs.db
 .env
 .env.local
 .env.*.local
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+*.egg-info/
+
+# ローカルDB
+data/
+*.sqlite3
+*.db
+
+# 投稿メディア実体はGitHubに保存しない
+storage/raw/
+storage/processed/
+storage/thumbnails/
+!storage/.gitkeep
