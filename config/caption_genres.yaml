@@ -1,0 +1,183 @@
+version: 1
+
+default_genre: slot_daily
+
+aliases:
+  "1": slot_daily
+  "2": slot_result
+  "3": slot_moment
+  "4": machine_impression
+  "5": data_review
+  "6": hall_observation
+  "7": new_machine_note
+  "8": play_log
+  "9": slot_funny
+  "10": announcement
+
+common_rules:
+  language: ja
+  platform: x
+  max_hashtags: 4
+  avoid:
+    - 勝てる、稼げる、確実、鉄板、保証などの断定表現
+    - 根拠のない設定投入・高設定示唆の断定
+    - 過度な射幸心を煽る表現
+    - 未成年向けの表現
+    - 店舗や第三者への中傷
+    - 画像や動画にない内容の断定
+  style:
+    - 短く自然
+    - 投稿者本人の実戦メモのように書く
+    - 煽りすぎない
+    - わざとらしい広告文にしない
+
+genres:
+  slot_daily:
+    label: 稼働日記
+    purpose: 今日の稼働や一場面を自然に投稿する
+    caption_style:
+      - 日記調
+      - 軽い感想
+      - 勝敗を煽らない
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#パチスロ"
+        - "#稼働日記"
+
+  slot_result:
+    label: 実戦結果
+    purpose: 実戦結果を淡々と振り返る
+    caption_style:
+      - 結果と感想を短く
+      - 良かった点と反省を入れる
+      - 次回の勝ちを断定しない
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#実戦結果"
+        - "#パチスロ"
+
+  slot_moment:
+    label: 出目・演出
+    purpose: 出目、演出、上乗せ、珍しい瞬間を共有する
+    caption_style:
+      - その瞬間の感情を短く
+      - 説明しすぎない
+      - 煽りすぎない
+    cta: false
+    hashtags:
+      max_count: 4
+      candidates:
+        - "#スロット"
+        - "#パチスロ"
+        - "#演出"
+
+  machine_impression:
+    label: 機種所感
+    purpose: 機種の打感や印象をレビューする
+    caption_style:
+      - 個人の感想として書く
+      - 良い点と気になった点を簡潔に
+      - 断定レビューにしない
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#新台"
+        - "#パチスロ"
+
+  data_review:
+    label: データ振り返り
+    purpose: グラフや履歴を見て、事後的に振り返る
+    caption_style:
+      - 事実ベース
+      - 断定ではなく仮説として書く
+      - 今後の勝ちを保証しない
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#データ"
+        - "#パチスロ"
+
+  hall_observation:
+    label: 店舗状況メモ
+    purpose: 店内状況や雰囲気を記録する
+    caption_style:
+      - 観察メモ調
+      - 設定投入を断定しない
+      - 店舗名や他人への配慮を入れる
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#ホール状況"
+        - "#パチスロ"
+
+  new_machine_note:
+    label: 新台・初打ち
+    purpose: 新台や初打ちの感想を投稿する
+    caption_style:
+      - 初見の感想
+      - 良し悪しを断定しすぎない
+      - 打感中心
+    cta: false
+    hashtags:
+      max_count: 4
+      candidates:
+        - "#スロット"
+        - "#新台"
+        - "#初打ち"
+        - "#パチスロ"
+
+  play_log:
+    label: 立ち回り記録
+    purpose: その日の判断や動きを記録する
+    caption_style:
+      - 自分の判断メモとして書く
+      - 他人に推奨しない
+      - 勝てる方法として断定しない
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#稼働記録"
+        - "#パチスロ"
+
+  slot_funny:
+    label: ネタ・雑談
+    purpose: スロット中の小ネタや自虐を軽く投稿する
+    caption_style:
+      - 軽い
+      - 自虐寄り
+      - 攻撃的にしない
+    cta: false
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#パチスロ"
+        - "#スロ垢"
+
+  announcement:
+    label: 告知
+    purpose: 投稿、動画、配信、記事更新などを知らせる
+    caption_style:
+      - 簡潔
+      - 何を見てほしいか明確
+      - 煽りすぎない
+    cta: true
+    hashtags:
+      max_count: 3
+      candidates:
+        - "#スロット"
+        - "#パチスロ"

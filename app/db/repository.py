@@ -32,6 +32,9 @@ class Repository:
         source_user_id: str | None = None,
         mode: PostingMode | str = PostingMode.APPROVAL,
         status: PostJobStatus | str = PostJobStatus.RECEIVED,
+        genre_key: str | None = None,
+        genre_label: str | None = None,
+        caption_instruction: str | None = None,
     ) -> PostJob:
         post_job = PostJob(
             source_type=source_type,
@@ -39,6 +42,9 @@ class Repository:
             source_user_id=source_user_id,
             mode=_enum_value(mode),
             status=_enum_value(status),
+            genre_key=genre_key,
+            genre_label=genre_label,
+            caption_instruction=caption_instruction,
         )
         self.session.add(post_job)
         self.session.flush()
@@ -137,6 +143,20 @@ class Repository:
     ) -> PostJob:
         post_job.status = _enum_value(status)
         post_job.error_message = error_message
+        self.session.flush()
+        return post_job
+
+    def update_post_job_genre(
+        self,
+        post_job: PostJob,
+        *,
+        genre_key: str,
+        genre_label: str | None = None,
+        caption_instruction: str | None = None,
+    ) -> PostJob:
+        post_job.genre_key = genre_key
+        post_job.genre_label = genre_label
+        post_job.caption_instruction = caption_instruction
         self.session.flush()
         return post_job
 

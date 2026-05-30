@@ -5,6 +5,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from sqlalchemy import Engine, create_engine
+from sqlalchemy import inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -34,6 +35,25 @@ def create_session_factory(engine: Engine) -> sessionmaker[Session]:
 
 def init_db(engine: Engine) -> None:
     Base.metadata.create_all(bind=engine)
+    ensure_sqlite_post_job_columns(engine)
+
+
+def ensure_sqlite_post_job_columns(engine: Engine) -> None:
+    if engine.dialect.name != "sqlite":
+        return
+    inspector = inspect(engine)
+    if "post_jobs" not in inspector.get_table_names():
+        return
+    existing_columns = {column["name"] for column in inspector.get_columns("post_jobs")}
+    required_columns = {
+        "genre_key": "VARCHAR(255)",
+        "genre_label": "VARCHAR(255)",
+        "caption_instruction": "TEXT",
+    }
+    with engine.begin() as connection:
+        for column_name, column_type in required_columns.items():
+            if column_name not in existing_columns:
+                connection.execute(text(f"ALTER TABLE post_jobs ADD COLUMN {column_name} {column_type}"))
 
 
 @contextmanager

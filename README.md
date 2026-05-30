@@ -205,7 +205,7 @@ Telegramから以下のコマンドを使えます。
 
 ## 現在の実装範囲
 
-PR 10相当まで、以下を実装しています。
+MVPとCaption Quality Phaseとして、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -265,6 +265,11 @@ PR 10相当まで、以下を実装しています。
 - 画像・動画正常系とrejected/failed異常系を含むpytest
 - 検証・処理結果のDB状態更新
 - MVP向けpytest
+- captionジャンル設定 `config/caption_genres.yaml`
+- Telegram caption欄からのジャンル番号 / ジャンルキー抽出
+- 複数ジャンル指定に対応したcaption生成prompt
+- ジャンル別ハッシュタグ候補と上限の適用
+- 不明ジャンル時の利用可能ジャンル一覧返信
 
 ## 動画処理仕様
 
@@ -302,7 +307,62 @@ app/prompts/caption/system.ja.md
 app/prompts/caption/user.ja.md
 ```
 
-投稿文の観察ルール、文体、禁止事項を調整する場合は、Pythonコードではなく上記Markdownを編集してください。`user.ja.md` では `{posting_mode}` と `{media_summary}` をplaceholderとして使えます。
+投稿文の観察ルール、文体、禁止事項を調整する場合は、Pythonコードではなく上記Markdownを編集してください。`user.ja.md` では `{posting_mode}` / `{media_summary}` / `{genre_instruction}` をplaceholderとして使えます。
+
+## スロット投稿向けジャンル指定
+
+Telegramで画像や動画を送るとき、caption欄にジャンル番号またはジャンルキーだけを入れると、そのジャンル向けの投稿ルールでcaptionを生成します。ユーザーが毎回 `tone`、`goal`、`memo` などを書く必要はありません。
+
+入力例:
+
+```text
+1
+```
+
+```text
+slot_result
+```
+
+```text
+genre=slot_result
+```
+
+```text
+g=2
+```
+
+複数ジャンルを合わせたい場合は、スペース、カンマ、スラッシュ区切りで指定できます。
+
+```text
+1 2
+```
+
+```text
+g=2,3
+```
+
+```text
+genre=slot_result,slot_moment
+```
+
+ジャンル未指定の場合は `default_genre` の `slot_daily` を使います。不明なジャンルが指定された場合は投稿処理へ進まず、Telegramへ利用可能ジャンル一覧を返します。
+
+利用可能ジャンル:
+
+```text
+1 = slot_daily / 稼働日記
+2 = slot_result / 実戦結果
+3 = slot_moment / 出目・演出
+4 = machine_impression / 機種所感
+5 = data_review / データ振り返り
+6 = hall_observation / 店舗状況メモ
+7 = new_machine_note / 新台・初打ち
+8 = play_log / 立ち回り記録
+9 = slot_funny / ネタ・雑談
+10 = announcement / 告知
+```
+
+ジャンル別ルールは `config/caption_genres.yaml` で編集できます。ハッシュタグはジャンルごとの候補としてAIに渡しますが、固定で挿入するものではありません。画像や動画内容に合う場合だけ使い、ジャンルごとの上限を超えないように扱います。
 
 ## Telegramプレビュー仕様
 
