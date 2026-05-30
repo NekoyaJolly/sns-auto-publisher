@@ -66,6 +66,7 @@ class TelegramInput:
 
         application = ApplicationBuilder().token(self.settings.telegram_bot_token).build()
         application.add_handler(CommandHandler("start", self.handle_start))
+        application.add_handler(CommandHandler("whoami", self.handle_whoami_command))
         application.add_handler(CommandHandler("mode", self.handle_mode_command))
         application.add_handler(CommandHandler("retry", self.handle_retry_command))
         application.add_handler(CommandHandler("status", self.handle_status_command))
@@ -79,6 +80,13 @@ class TelegramInput:
         if chat_id is None:
             return
         await context.bot.send_message(chat_id=chat_id, text="SNS投稿オーケストレーターを起動しています。画像または動画を送信してください。")
+
+    async def handle_whoami_command(self, update: Any, context: Any) -> None:
+        chat_id = self._chat_id(update)
+        if chat_id is None:
+            return
+        user_id = self._user_id(update) or "unknown"
+        await context.bot.send_message(chat_id=chat_id, text=f"chat_id={chat_id}\nuser_id={user_id}")
 
     async def handle_mode_command(self, update: Any, context: Any) -> None:
         chat_id = self._chat_id(update)

@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Annotated, Any
 
 from pydantic import Field, field_validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 from app.db.models import PostingMode
 
@@ -15,10 +15,10 @@ class Settings(BaseSettings):
     posting_mode: PostingMode = PostingMode.APPROVAL
 
     telegram_bot_token: str = ""
-    telegram_allowed_chat_ids: list[str] = Field(default_factory=list)
+    telegram_allowed_chat_ids: Annotated[list[str], NoDecode] = Field(default_factory=list)
 
     openai_api_key: str = ""
-    openai_model: str = "gpt-5.4-mini"
+    openai_model: str = ""
 
     x_api_key: str = ""
     x_api_secret: str = ""

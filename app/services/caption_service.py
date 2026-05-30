@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import logging
+import base64
+import mimetypes
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Protocol
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, field_validator
@@ -50,6 +53,8 @@ class OpenAICaptionGenerator:
     def __init__(self, settings: Settings) -> None:
         if not settings.openai_api_key:
             raise ValueError("OPENAI_API_KEYが設定されていません")
+        if not settings.openai_model:
+            raise ValueError("OPENAI_MODELが設定されていません")
         from openai import OpenAI
 
         self.settings = settings
@@ -59,10 +64,7 @@ class OpenAICaptionGenerator:
         prompt = build_caption_prompt(post_job)
         response = self.client.responses.create(
             model=self.settings.openai_model,
-            input=[
-                {"role": "system", "content": prompt.system},
-                {"role": "user", "content": prompt.user},
-            ],
+            input=build_caption_input(prompt, post_job),
             text={
                 "format": {
                     "type": "json_schema",
@@ -155,17 +157,35 @@ def caption_json_schema() -> dict[str, object]:
 def build_caption_prompt(post_job: PostJob) -> CaptionPrompt:
     media_lines = "\n".join(_media_summary(media_asset) for media_asset in post_job.media_assets)
     system = (
-        "あなたはSNS投稿文を作る編集者です。"
+        "あなたは画像観察に慎重なSNS編集者です。"
         "出力は必ず指定JSON Schemaに従い、caption、hashtags、alt_text、warnings、should_postを返してください。"
-        "captionは日本語で自然に、hashtagsは少数に絞り、alt_textはアクセシビリティ向けに具体的にしてください。"
+        "添付された画像または動画サムネイルを最優先で観察してください。"
+        "captionは日本語で自然に、画像内で実際に確認できる具体物・色・配置・状態のうち1〜2点を含めてください。"
+        "alt_textはアクセシビリティ向けに、見えているものだけを80〜160字程度で具体的に説明してください。"
+        "hashtagsは少数に絞り、画像内容と直接関係するものだけにしてください。"
+        "見えていない場所、撮影時刻、人物関係、感情、ブランド、文字、イベント名は推測で書かないでください。"
+        "細部を判別できない場合は断定せず、warningsに不確実な点を書いてください。"
+        "「素敵な一枚」「美しい景色」のような汎用的で画像固有性の低い表現だけでcaptionを作らないでください。"
     )
     user = (
-        "以下の処理済みメディア情報からX投稿用のJSONを生成してください。\n"
+        "以下の処理済みメディア情報と添付画像からX投稿用のJSONを生成してください。\n"
         f"投稿モード: {post_job.mode}\n"
         f"メディア:\n{media_lines}\n"
+        "動画の場合はサムネイル画像を添付しています。\n"
         "重大な懸念がある場合はwarningsに理由を書き、should_post=falseにしてください。"
     )
     return CaptionPrompt(system=system, user=user)
+
+
+def build_caption_input(prompt: CaptionPrompt, post_job: PostJob) -> list[dict[str, object]]:
+    content: list[dict[str, object]] = [{"type": "input_text", "text": prompt.user}]
+    content.extend(_media_image_parts(post_job.media_assets))
+    if len(content) == 1:
+        raise ValueError("AI生成に必要な画像または動画サムネイルが見つかりません")
+    return [
+        {"role": "system", "content": prompt.system},
+        {"role": "user", "content": content},
+    ]
 
 
 def _media_summary(media_asset: MediaAsset) -> str:
@@ -180,3 +200,35 @@ def _media_summary(media_asset: MediaAsset) -> str:
     if media_asset.duration_seconds is not None:
         parts.append(f"duration_seconds={media_asset.duration_seconds}")
     return "- " + ", ".join(parts)
+
+
+def _media_image_parts(media_assets: list[MediaAsset]) -> list[dict[str, object]]:
+    parts: list[dict[str, object]] = []
+    for media_asset in media_assets:
+        path = _caption_visual_path(media_asset)
+        if path is None:
+            continue
+        parts.append(
+            {
+                "type": "input_image",
+                "image_url": _data_url(path),
+                "detail": "high",
+            }
+        )
+    return parts
+
+
+def _caption_visual_path(media_asset: MediaAsset) -> Path | None:
+    if media_asset.media_type == "image" and media_asset.processed_path:
+        path = Path(media_asset.processed_path)
+    elif media_asset.media_type == "video" and media_asset.thumbnail_path:
+        path = Path(media_asset.thumbnail_path)
+    else:
+        return None
+    return path if path.exists() else None
+
+
+def _data_url(path: Path) -> str:
+    mime_type = mimetypes.guess_type(path.name)[0] or "image/jpeg"
+    encoded = base64.b64encode(path.read_bytes()).decode("ascii")
+    return f"data:{mime_type};base64,{encoded}"

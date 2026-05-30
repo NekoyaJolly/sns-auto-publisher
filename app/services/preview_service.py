@@ -123,17 +123,25 @@ class PreviewService:
 def build_preview_text(post_job: PostJob) -> str:
     hashtags = json.loads(post_job.hashtags_json or "[]")
     warnings = json.loads(post_job.ai_warnings_json or "[]")
+    posted_lines = [post_job.caption or ""]
+    if hashtags:
+        posted_lines.extend(["", " ".join(hashtags)])
     lines = [
         f"投稿プレビュー job_id={post_job.id}",
         "",
-        post_job.caption or "",
+        "ここから投稿されます",
+        "-----",
+        *posted_lines,
+        "-----",
+        "ここまで投稿されます",
     ]
-    if hashtags:
-        lines.extend(["", " ".join(hashtags)])
+    info_lines = []
     if post_job.alt_text:
-        lines.extend(["", f"alt_text: {post_job.alt_text}"])
+        info_lines.append(f"alt_text: {post_job.alt_text}")
     if warnings:
-        lines.extend(["", "warnings:", *[f"- {warning}" for warning in warnings]])
+        info_lines.extend(["warnings:", *[f"- {warning}" for warning in warnings]])
+    if info_lines:
+        lines.extend(["", "確認用情報（投稿本文には入りません）", *info_lines])
     return "\n".join(lines).strip()
 
 

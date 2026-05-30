@@ -37,6 +37,7 @@ def test_env_example_contains_required_keys_and_no_dummy_secrets():
     assert REQUIRED_KEYS <= values.keys()
     assert values["APP_ENV"] == "local"
     assert values["POSTING_MODE"] == "approval"
+    assert values["OPENAI_MODEL"] == ""
     assert values["DATABASE_URL"] == "sqlite:///data/app.sqlite3"
     assert values["STORAGE_ROOT"] == "storage"
     for key in SECRET_KEYS:
