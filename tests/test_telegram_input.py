@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 from types import SimpleNamespace
 
+from PIL import Image
 from sqlalchemy import select
 
 from app.config.settings import Settings
@@ -71,7 +72,7 @@ def test_telegram_input_handles_photo_and_creates_raw_records(tmp_path: Path):
     session_factory = create_session_factory(engine)
     storage = LocalStorage(settings=settings)
     telegram_input = TelegramInput(settings=settings, session_factory=session_factory, storage=storage)
-    bot = FakeBot(content=b"telegram image")
+    bot = FakeBot(content=_image_bytes(tmp_path / "telegram.jpg"))
     context = SimpleNamespace(bot=bot)
     update = SimpleNamespace(
         effective_chat=SimpleNamespace(id=12345),
@@ -93,6 +94,8 @@ def test_telegram_input_handles_photo_and_creates_raw_records(tmp_path: Path):
     assert post_jobs[0].source_chat_id == "12345"
     assert len(media_assets) == 1
     assert Path(media_assets[0].original_path).exists()
+    assert Path(media_assets[0].processed_path).exists()
+    assert Path(media_assets[0].thumbnail_path).exists()
     assert media_assets[0].media_type == "image"
     assert bot.messages == [("12345", "受信しました。job_id=1 / media=1")]
 
@@ -108,3 +111,9 @@ def _build_telegram_input(tmp_path: Path, allowed_chat_ids: list[str] | None = N
     init_db(engine)
     session_factory = create_session_factory(engine)
     return TelegramInput(settings=settings, session_factory=session_factory, storage=LocalStorage(settings=settings))
+
+
+def _image_bytes(path: Path) -> bytes:
+    image = Image.new("RGB", (320, 240), (40, 90, 160))
+    image.save(path, format="JPEG")
+    return path.read_bytes()

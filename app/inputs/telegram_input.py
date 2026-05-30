@@ -9,7 +9,9 @@ from sqlalchemy.orm import Session, sessionmaker
 from app.config.settings import Settings
 from app.db.session import session_scope
 from app.services.ingest_service import IncomingMediaFile, IngestService
+from app.services.media_process_service import MediaProcessService
 from app.services.notify_service import NotifyService, ReceiveNotification
+from app.services.validation_service import ValidationService
 from app.storage.local_storage import LocalStorage
 
 logger = logging.getLogger(__name__)
@@ -88,6 +90,19 @@ class TelegramInput:
                     user_id=user_id,
                     media_files=[incoming_media],
                 )
+                validation_results = ValidationService(session=session, settings=self.settings).validate_post_job(
+                    result.post_job
+                )
+                if not all(validation_result.is_valid for validation_result in validation_results):
+                    reason = "; ".join(
+                        validation_result.reason or "検証に失敗しました" for validation_result in validation_results
+                    )
+                    await notify_service.notify_rejected(chat_id, reason)
+                    return
+
+                if any(media_asset.media_type == "image" for media_asset in result.media_assets):
+                    MediaProcessService(session=session, storage=self.storage).process_post_job_images(result.post_job)
+
                 post_job_id = result.post_job.id
                 media_count = len(result.media_assets)
             await notify_service.notify_received(
