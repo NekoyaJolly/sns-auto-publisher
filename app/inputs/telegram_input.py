@@ -12,6 +12,7 @@ from app.db.models import PostJob, PostJobStatus, PostingMode
 from app.db.repository import Repository
 from app.db.session import session_scope
 from app.services.caption_service import CaptionGenerator, CaptionService
+from app.services.genre_service import GenreService, UnknownGenreError
 from app.services.ingest_service import IncomingMediaFile, IngestService
 from app.services.media_process_service import MediaProcessService
 from app.services.mode_service import ModeService, posting_mode_help_text
@@ -51,12 +52,14 @@ class TelegramInput:
         storage: LocalStorage,
         caption_generator: CaptionGenerator | None = None,
         publisher: Publisher | None = None,
+        genre_service: GenreService | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.storage = storage
         self.caption_generator = caption_generator
         self.publisher = publisher
+        self.genre_service = genre_service or GenreService()
 
     def run_polling(self) -> None:
         if not self.settings.telegram_bot_token:
@@ -131,6 +134,12 @@ class TelegramInput:
             return
 
         try:
+            genre_selection = self.genre_service.resolve_from_text(self._message_caption(update))
+        except UnknownGenreError as exc:
+            await messenger.send_message(chat_id=chat_id, text=self.genre_service.unknown_genre_message(exc))
+            return
+
+        try:
             incoming_media = await self.download_media(context.bot, candidate)
             with session_scope(self.session_factory) as session:
                 current_mode = ModeService(session=session, settings=self.settings).get_mode()
@@ -140,6 +149,12 @@ class TelegramInput:
                     user_id=user_id,
                     media_files=[incoming_media],
                     mode=current_mode,
+                )
+                Repository(session).update_post_job_genre(
+                    result.post_job,
+                    genre_key=genre_selection.genre_key,
+                    genre_label=genre_selection.genre_label,
+                    caption_instruction=self.genre_service.build_caption_instruction(genre_selection),
                 )
                 if result.post_job.status in {PostJobStatus.FAILED.value, PostJobStatus.REJECTED.value}:
                     await notify_service.notify_rejected(chat_id, result.post_job.error_message or "受信処理に失敗しました")
@@ -386,3 +401,11 @@ class TelegramInput:
         if user is None:
             return None
         return str(user.id)
+
+    @staticmethod
+    def _message_caption(update: Any) -> str | None:
+        message = getattr(update, "message", None)
+        if message is None:
+            return None
+        caption = getattr(message, "caption", None)
+        return str(caption) if caption is not None else None

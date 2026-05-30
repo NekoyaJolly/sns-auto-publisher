@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session
 from app.config.settings import Settings
 from app.db.models import MediaAsset, PostJob, PostJobStatus
 from app.db.repository import Repository
+from app.services.genre_service import GenreService
 from app.services.prompt_loader import CaptionPromptLoader
 
 logger = logging.getLogger(__name__)
@@ -92,10 +93,12 @@ class CaptionService:
         session: Session,
         settings: Settings,
         generator: CaptionGenerator | None = None,
+        genre_service: GenreService | None = None,
     ) -> None:
         self.repository = Repository(session)
         self.settings = settings
         self.generator = generator
+        self.genre_service = genre_service or GenreService()
 
     def caption_post_job(self, post_job: PostJob) -> PostJob:
         if post_job.status not in self.allowed_statuses:
@@ -105,6 +108,7 @@ class CaptionService:
         try:
             generator = self.generator or OpenAICaptionGenerator(self.settings)
             payload = generator.generate(post_job)
+            payload = self._apply_genre_hashtag_limit(post_job, payload)
         except Exception as exc:
             logger.exception("AI投稿文生成に失敗しました")
             return self.repository.update_post_job_status(
@@ -133,6 +137,10 @@ class CaptionService:
             status=PostJobStatus.CAPTIONED,
         )
 
+    def _apply_genre_hashtag_limit(self, post_job: PostJob, payload: CaptionPayload) -> CaptionPayload:
+        max_count = self.genre_service.max_hashtags_for_post_job(post_job)
+        return payload.model_copy(update={"hashtags": payload.hashtags[:max_count]})
+
 
 def parse_caption_payload(raw_json: str) -> CaptionPayload:
     try:
@@ -160,10 +168,17 @@ def build_caption_prompt(
     post_job: PostJob,
     *,
     prompt_loader: CaptionPromptLoader | None = None,
+    genre_service: GenreService | None = None,
 ) -> CaptionPrompt:
     media_lines = "\n".join(_media_summary(media_asset) for media_asset in post_job.media_assets)
+    resolved_genre_service = genre_service or GenreService()
+    genre_instruction = post_job.caption_instruction or resolved_genre_service.build_caption_instruction_for_post_job(post_job)
     template = (prompt_loader or CaptionPromptLoader()).load()
-    system, user = template.render(posting_mode=post_job.mode, media_summary=media_lines)
+    system, user = template.render(
+        posting_mode=post_job.mode,
+        media_summary=media_lines,
+        genre_instruction=genre_instruction,
+    )
     return CaptionPrompt(system=system, user=user)
 
 

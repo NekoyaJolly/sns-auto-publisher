@@ -9,12 +9,13 @@ class CaptionPromptTemplate:
     system_template: str
     user_template: str
 
-    def render(self, *, posting_mode: str, media_summary: str) -> tuple[str, str]:
+    def render(self, *, posting_mode: str, media_summary: str, genre_instruction: str = "") -> tuple[str, str]:
         return (
             self.system_template.strip(),
             self.user_template.format(
                 posting_mode=posting_mode,
                 media_summary=media_summary,
+                genre_instruction=genre_instruction,
             ).strip(),
         )
 
