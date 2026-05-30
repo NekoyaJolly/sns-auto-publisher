@@ -63,6 +63,12 @@ def test_preview_text_contains_caption_hashtags_alt_text_and_warnings(tmp_path: 
         assert "#photo #daily" in text
         assert "alt_text: 代替テキストです" in text
         assert "軽微な警告" in text
+        assert "ここから投稿されます" in text
+        assert "ここまで投稿されます" in text
+        assert "確認用情報（投稿本文には入りません）" in text
+        assert text.index("ここから投稿されます") < text.index("投稿本文です")
+        assert text.index("#photo #daily") < text.index("ここまで投稿されます")
+        assert text.index("alt_text: 代替テキストです") > text.index("ここまで投稿されます")
 
 
 def test_send_preview_sets_waiting_approval_and_sends_buttons(tmp_path: Path):
