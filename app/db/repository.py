@@ -105,6 +105,12 @@ class Repository:
     def get_media_asset(self, media_asset_id: int) -> MediaAsset | None:
         return self.session.get(MediaAsset, media_asset_id)
 
+    def require_post_job(self, post_job_id: int) -> PostJob:
+        post_job = self.get_post_job(post_job_id)
+        if post_job is None:
+            raise ValueError(f"post_jobが見つかりません: {post_job_id}")
+        return post_job
+
     def update_post_job_status(
         self,
         post_job: PostJob,

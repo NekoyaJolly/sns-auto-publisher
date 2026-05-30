@@ -5,7 +5,7 @@ from typing import Protocol
 
 
 class TelegramMessenger(Protocol):
-    async def send_message(self, chat_id: str, text: str) -> None:
+    async def send_message(self, chat_id: str, text: str, reply_markup: object | None = None) -> None:
         pass
 
 

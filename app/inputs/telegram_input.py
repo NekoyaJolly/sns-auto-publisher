@@ -13,6 +13,7 @@ from app.services.caption_service import CaptionGenerator, CaptionService
 from app.services.ingest_service import IncomingMediaFile, IngestService
 from app.services.media_process_service import MediaProcessService
 from app.services.notify_service import NotifyService, ReceiveNotification
+from app.services.preview_service import PreviewService
 from app.services.validation_service import ValidationService
 from app.storage.local_storage import LocalStorage
 
@@ -31,8 +32,8 @@ class TelegramBotMessenger:
     def __init__(self, bot: Any) -> None:
         self.bot = bot
 
-    async def send_message(self, chat_id: str, text: str) -> None:
-        await self.bot.send_message(chat_id=chat_id, text=text)
+    async def send_message(self, chat_id: str, text: str, reply_markup: object | None = None) -> None:
+        await self.bot.send_message(chat_id=chat_id, text=text, reply_markup=reply_markup)
 
 
 class TelegramInput:
@@ -53,10 +54,11 @@ class TelegramInput:
         if not self.settings.telegram_bot_token:
             raise ValueError("TELEGRAM_BOT_TOKENが設定されていません")
 
-        from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, filters
+        from telegram.ext import ApplicationBuilder, CallbackQueryHandler, CommandHandler, MessageHandler, filters
 
         application = ApplicationBuilder().token(self.settings.telegram_bot_token).build()
         application.add_handler(CommandHandler("start", self.handle_start))
+        application.add_handler(CallbackQueryHandler(self.handle_preview_callback, pattern=r"^post:"))
         application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, self.handle_media))
         logger.info("Telegram Botのpollingを開始します")
         application.run_polling()
@@ -122,6 +124,14 @@ class TelegramInput:
                 post_job_id = result.post_job.id
                 media_count = len(result.media_assets)
                 detail = "動画処理完了 / AI生成完了" if has_video else "AI生成完了"
+                if result.post_job.mode == "approval":
+                    await PreviewService(
+                        session=session,
+                        settings=self.settings,
+                        messenger=messenger,
+                        caption_generator=self.caption_generator,
+                    ).send_preview(chat_id, result.post_job)
+                    detail = f"{detail} / プレビュー送信完了"
             await notify_service.notify_received(
                 chat_id,
                 ReceiveNotification(post_job_id=post_job_id, media_count=media_count, detail=detail),
@@ -129,6 +139,30 @@ class TelegramInput:
         except Exception as exc:
             logger.exception("Telegramメディア受信処理に失敗しました")
             await notify_service.notify_rejected(chat_id, str(exc))
+
+    async def handle_preview_callback(self, update: Any, context: Any) -> None:
+        query = getattr(update, "callback_query", None)
+        if query is None:
+            return
+        await query.answer()
+
+        chat_id = self._chat_id(update)
+        callback_data = getattr(query, "data", "")
+        if chat_id is None:
+            return
+
+        messenger = TelegramBotMessenger(context.bot)
+        try:
+            with session_scope(self.session_factory) as session:
+                await PreviewService(
+                    session=session,
+                    settings=self.settings,
+                    messenger=messenger,
+                    caption_generator=self.caption_generator,
+                ).handle_callback(chat_id, callback_data)
+        except Exception as exc:
+            logger.exception("Telegramプレビューcallback処理に失敗しました")
+            await messenger.send_message(chat_id=chat_id, text=f"操作に失敗しました: {exc}")
 
     def is_allowed_chat(self, chat_id: str) -> bool:
         if not self.settings.telegram_allowed_chat_ids:
