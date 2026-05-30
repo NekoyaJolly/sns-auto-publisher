@@ -45,6 +45,12 @@ source .venv/bin/activate
 python -m pip install -e ".[dev]"
 ```
 
+動画処理には `ffmpeg` と `ffprobe` が必要です。macOSではHomebrewで導入できます。
+
+```bash
+brew install ffmpeg
+```
+
 ## `.env` の作り方
 
 `.env.example` をコピーして `.env` を作成します。
@@ -72,7 +78,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 3相当まで、以下を実装しています。
+PR 4相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -90,15 +96,36 @@ PR 3相当まで、以下を実装しています。
 - 画像のEXIF除去
 - 画像リサイズ
 - サムネイル生成
+- `ffprobe` による動画メタデータ取得
+- 動画のMIME、拡張子、サイズ、秒数検証
+- `.mp4` / `.mov` 入力対応
+- `ffmpeg` によるH.264/AACのmp4正規化
+- `+faststart` 付きmp4出力
+- 動画サムネイル生成
+- ffmpeg / ffprobe未導入時や変換失敗時のfailed記録
+- 全media_assetsの状態に基づくpost_job status更新
 - 検証・処理結果のDB状態更新
 - 最小限のpytest
 
+## 動画処理仕様
+
+対応入力形式は `.mp4` と `.mov` です。MIME typeは `video/mp4` と `video/quicktime` を許可します。
+
+動画はrawファイルを上書きせず、以下へ出力します。
+
+```text
+storage/processed/<job_id>/<original_stem>.mp4
+storage/thumbnails/<job_id>/<original_stem>.jpg
+```
+
+変換仕様は、video codecがH.264、audio codecがAAC、mp4のfaststart有効です。秒数上限は `MAX_VIDEO_DURATION_SECONDS`、サイズ上限は `MAX_VIDEO_SIZE_MB` で設定します。
+
 ## 次PR候補
 
-次はPR 4として、動画処理を実装します。
+次はPR 5として、AI caption / hashtags / alt_text生成を実装します。
 
-- iPhone動画のmp4化
-- Android動画のmp4化
-- 動画秒数とサイズの検証
-- 動画サムネイル生成
-- FFmpeg失敗時のfailed記録
+- AI出力をJSONとして受け取る
+- captionをDBへ保存する
+- hashtagsをDBへ保存する
+- alt_textをDBへ保存する
+- should_post=falseの場合に投稿へ進まない

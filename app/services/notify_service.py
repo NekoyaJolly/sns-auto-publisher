@@ -13,6 +13,7 @@ class TelegramMessenger(Protocol):
 class ReceiveNotification:
     post_job_id: int
     media_count: int
+    detail: str | None = None
 
 
 class NotifyService:
@@ -21,6 +22,8 @@ class NotifyService:
 
     async def notify_received(self, chat_id: str, notification: ReceiveNotification) -> None:
         text = f"受信しました。job_id={notification.post_job_id} / media={notification.media_count}"
+        if notification.detail:
+            text = f"{text} / {notification.detail}"
         await self.messenger.send_message(chat_id=chat_id, text=text)
 
     async def notify_rejected(self, chat_id: str, reason: str) -> None:
