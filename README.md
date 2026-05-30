@@ -59,7 +59,7 @@ brew install ffmpeg
 cp .env.example .env
 ```
 
-初期状態では `POSTING_MODE=approval` です。APIキーやBotトークンは後続PRで実API連携を入れるまでは未設定のままで構いません。
+初期状態では `POSTING_MODE=approval` です。TelegramからAI生成まで通す場合は `TELEGRAM_BOT_TOKEN` と `OPENAI_API_KEY` を設定してください。
 
 ## 起動方法
 
@@ -78,7 +78,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 4相当まで、以下を実装しています。
+PR 5相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -104,6 +104,11 @@ PR 4相当まで、以下を実装しています。
 - 動画サムネイル生成
 - ffmpeg / ffprobe未導入時や変換失敗時のfailed記録
 - 全media_assetsの状態に基づくpost_job status更新
+- OpenAI Responses APIを使うAI投稿文生成アダプター
+- AI出力JSONのSchema検証
+- caption / hashtags / alt_text / warningsのDB保存
+- `should_post=false` 時のrejected記録
+- AI生成失敗時のfailed記録
 - 検証・処理結果のDB状態更新
 - 最小限のpytest
 
@@ -120,12 +125,28 @@ storage/thumbnails/<job_id>/<original_stem>.jpg
 
 変換仕様は、video codecがH.264、audio codecがAAC、mp4のfaststart有効です。秒数上限は `MAX_VIDEO_DURATION_SECONDS`、サイズ上限は `MAX_VIDEO_SIZE_MB` で設定します。
 
+## AI投稿文生成仕様
+
+処理済みメディア情報をもとに、OpenAI Responses APIで以下のJSONを生成します。
+
+```json
+{
+  "caption": "投稿本文",
+  "hashtags": ["#example"],
+  "alt_text": "画像や動画の説明",
+  "warnings": [],
+  "should_post": true
+}
+```
+
+生成結果はDBの `post_jobs.caption` / `hashtags_json` / `alt_text` / `ai_warnings_json` に保存します。JSON形式が不正な場合やAPI呼び出しに失敗した場合は `failed`、`should_post=false` の場合は `rejected` として理由をDBに残します。
+
 ## 次PR候補
 
-次はPR 5として、AI caption / hashtags / alt_text生成を実装します。
+次はPR 6として、Telegramプレビュー + 承認を実装します。
 
-- AI出力をJSONとして受け取る
-- captionをDBへ保存する
-- hashtagsをDBへ保存する
-- alt_textをDBへ保存する
-- should_post=falseの場合に投稿へ進まない
+- 投稿プレビューをTelegramへ返す
+- 投稿する / 再生成 / 却下ボタンを扱う
+- 承認時にpublishingへ進む
+- 再生成時にAI生成をやり直す
+- 却下時にrejectedへ更新する
