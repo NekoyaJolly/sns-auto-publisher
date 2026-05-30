@@ -103,6 +103,55 @@ class Repository:
     def get_media_asset(self, media_asset_id: int) -> MediaAsset | None:
         return self.session.get(MediaAsset, media_asset_id)
 
+    def update_post_job_status(
+        self,
+        post_job: PostJob,
+        status: PostJobStatus | str,
+        *,
+        error_message: str | None = None,
+    ) -> PostJob:
+        post_job.status = _enum_value(status)
+        post_job.error_message = error_message
+        self.session.flush()
+        return post_job
+
+    def update_media_asset_validation(
+        self,
+        media_asset: MediaAsset,
+        *,
+        status: MediaAssetStatus | str,
+        width: int | None = None,
+        height: int | None = None,
+        duration_seconds: float | None = None,
+        error_message: str | None = None,
+    ) -> MediaAsset:
+        media_asset.status = _enum_value(status)
+        media_asset.width = width
+        media_asset.height = height
+        media_asset.duration_seconds = duration_seconds
+        media_asset.error_message = error_message
+        self.session.flush()
+        return media_asset
+
+    def update_media_asset_processed(
+        self,
+        media_asset: MediaAsset,
+        *,
+        processed_path: str,
+        thumbnail_path: str,
+        width: int,
+        height: int,
+        status: MediaAssetStatus | str = MediaAssetStatus.PROCESSED,
+    ) -> MediaAsset:
+        media_asset.processed_path = processed_path
+        media_asset.thumbnail_path = thumbnail_path
+        media_asset.width = width
+        media_asset.height = height
+        media_asset.status = _enum_value(status)
+        media_asset.error_message = None
+        self.session.flush()
+        return media_asset
+
     def set_app_setting(self, key: str, value: str) -> AppSetting:
         setting = self.session.get(AppSetting, key)
         if setting is None:
