@@ -143,6 +143,13 @@ class Repository:
         self.session.flush()
         return post_job
 
+    def update_post_job_published(self, post_job: PostJob, *, x_post_id: str) -> PostJob:
+        post_job.x_post_id = x_post_id
+        post_job.status = PostJobStatus.PUBLISHED.value
+        post_job.error_message = None
+        self.session.flush()
+        return post_job
+
     def update_media_asset_validation(
         self,
         media_asset: MediaAsset,
