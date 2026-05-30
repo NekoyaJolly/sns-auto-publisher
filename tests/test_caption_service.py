@@ -7,7 +7,13 @@ from app.config.settings import Settings
 from app.db.models import MediaAssetStatus, PostJobStatus
 from app.db.repository import Repository
 from app.db.session import create_app_engine, create_session_factory, init_db, session_scope
-from app.services.caption_service import CaptionPayload, CaptionService, parse_caption_payload
+from app.services.caption_service import (
+    CaptionPayload,
+    CaptionService,
+    build_caption_input,
+    build_caption_prompt,
+    parse_caption_payload,
+)
 
 
 class FakeCaptionGenerator:
@@ -117,6 +123,68 @@ def test_caption_service_requires_processed_post_job(tmp_path: Path):
             ).caption_post_job(post_job)
 
 
+def test_build_caption_input_includes_processed_image_bytes(tmp_path: Path):
+    settings, session_factory = _build_context(tmp_path)
+    image_path = tmp_path / "processed.jpg"
+    image_path.write_bytes(b"fake image bytes")
+
+    with session_scope(session_factory) as session:
+        post_job = _create_processed_post_job(session, processed_path=str(image_path))
+        prompt = build_caption_prompt(post_job)
+
+        request_input = build_caption_input(prompt, post_job)
+
+    user_content = request_input[1]["content"]
+    assert isinstance(user_content, list)
+    image_part = user_content[1]
+    assert image_part["type"] == "input_image"
+    assert str(image_part["image_url"]).startswith("data:image/jpeg;base64,")
+
+
+def test_build_caption_input_uses_video_thumbnail(tmp_path: Path):
+    settings, session_factory = _build_context(tmp_path)
+    thumbnail_path = tmp_path / "thumbnail.jpg"
+    thumbnail_path.write_bytes(b"fake thumbnail bytes")
+
+    with session_scope(session_factory) as session:
+        repository = Repository(session)
+        post_job = repository.create_post_job(source_type="telegram")
+        media_asset = repository.create_media_asset(
+            post_job_id=post_job.id,
+            original_path="storage/raw/1/movie.mov",
+            processed_path="storage/processed/1/movie.mp4",
+            thumbnail_path=str(thumbnail_path),
+            media_type="video",
+            mime_type="video/quicktime",
+            file_hash="hash",
+            file_size=123,
+            width=640,
+            height=480,
+            duration_seconds=5.0,
+            status=MediaAssetStatus.PROCESSED,
+        )
+        post_job.media_assets.append(media_asset)
+        repository.update_post_job_status_from_media_assets(post_job)
+        prompt = build_caption_prompt(post_job)
+
+        request_input = build_caption_input(prompt, post_job)
+
+    user_content = request_input[1]["content"]
+    assert isinstance(user_content, list)
+    assert user_content[1]["type"] == "input_image"
+
+
+def test_build_caption_input_requires_visual_file(tmp_path: Path):
+    settings, session_factory = _build_context(tmp_path)
+
+    with session_scope(session_factory) as session:
+        post_job = _create_processed_post_job(session, processed_path=str(tmp_path / "missing.jpg"))
+        prompt = build_caption_prompt(post_job)
+
+        with pytest.raises(ValueError, match="画像または動画サムネイル"):
+            build_caption_input(prompt, post_job)
+
+
 def _build_context(tmp_path: Path):
     settings = Settings(
         _env_file=None,
@@ -128,13 +196,13 @@ def _build_context(tmp_path: Path):
     return settings, create_session_factory(engine)
 
 
-def _create_processed_post_job(session):
+def _create_processed_post_job(session, *, processed_path: str = "storage/processed/1/photo.jpg"):
     repository = Repository(session)
     post_job = repository.create_post_job(source_type="telegram")
     media_asset = repository.create_media_asset(
         post_job_id=post_job.id,
         original_path="storage/raw/1/photo.jpg",
-        processed_path="storage/processed/1/photo.jpg",
+        processed_path=processed_path,
         thumbnail_path="storage/thumbnails/1/photo.jpg",
         media_type="image",
         mime_type="image/jpeg",
