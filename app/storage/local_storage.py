@@ -51,6 +51,30 @@ class LocalStorage:
         directory = self.job_directory(area, job_id, create=create_parent)
         return directory / safe_name
 
+    def save_bytes(
+        self,
+        area: StorageArea | str,
+        job_id: int,
+        filename: str,
+        content: bytes,
+    ) -> Path:
+        path = self.unique_path(area, job_id, filename)
+        path.write_bytes(content)
+        return path
+
+    def unique_path(self, area: StorageArea | str, job_id: int, filename: str) -> Path:
+        path = self.build_path(area, job_id, filename, create_parent=True)
+        if not path.exists():
+            return path
+
+        stem = path.stem
+        suffix = path.suffix
+        for index in range(1, 10_000):
+            candidate = path.with_name(f"{stem}-{index}{suffix}")
+            if not candidate.exists():
+                return candidate
+        raise FileExistsError("保存先ファイル名の重複を解決できませんでした")
+
     @staticmethod
     def _area_value(area: StorageArea | str) -> str:
         try:
