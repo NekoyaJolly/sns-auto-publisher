@@ -1,0 +1,15 @@
+# 一時調査ファイル置き場 (AGENTS.md §5.3)
+.tmp/
+tmp/
+scratch/
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# 環境変数
+.env
+.env.local
+.env.*.local
