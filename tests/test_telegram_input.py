@@ -6,7 +6,7 @@ from PIL import Image
 from sqlalchemy import select
 
 from app.config.settings import Settings
-from app.db.models import MediaAsset, MediaAssetStatus, PostJob, PostJobStatus
+from app.db.models import MediaAsset, MediaAssetStatus, PostJob, PostJobStatus, PostingMode
 from app.db.repository import Repository
 from app.db.session import create_app_engine, create_session_factory, init_db, session_scope
 from app.inputs.telegram_input import TelegramInput
@@ -160,23 +160,109 @@ def test_telegram_input_handles_approve_callback(tmp_path: Path):
     assert bot.messages == [("12345", f"投稿処理へ進みます。job_id={post_job_id}", None)]
 
 
+def test_telegram_input_mode_command_can_show_and_set_mode(tmp_path: Path):
+    settings, session_factory, storage = _build_telegram_context(tmp_path, posting_mode=PostingMode.APPROVAL)
+    telegram_input = TelegramInput(settings=settings, session_factory=session_factory, storage=storage)
+    bot = FakeBot(content=b"")
+    update = SimpleNamespace(effective_chat=SimpleNamespace(id=12345), effective_user=SimpleNamespace(id=67890))
+
+    asyncio.run(telegram_input.handle_mode_command(update, SimpleNamespace(bot=bot, args=[])))
+    asyncio.run(telegram_input.handle_mode_command(update, SimpleNamespace(bot=bot, args=["auto"])))
+    asyncio.run(telegram_input.handle_mode_command(update, SimpleNamespace(bot=bot, args=[])))
+
+    assert "現在の投稿モード: approval" in bot.messages[0][1]
+    assert bot.messages[1] == ("12345", "投稿モードを auto に変更しました", None)
+    assert "現在の投稿モード: auto" in bot.messages[2][1]
+
+
+def test_telegram_input_auto_mode_moves_to_publishing(tmp_path: Path):
+    settings, session_factory, storage = _build_telegram_context(tmp_path, posting_mode=PostingMode.AUTO)
+    telegram_input = TelegramInput(
+        settings=settings,
+        session_factory=session_factory,
+        storage=storage,
+        caption_generator=FakeCaptionGenerator(),
+    )
+    bot = FakeBot(content=_image_bytes(tmp_path / "auto.jpg"))
+    update = _photo_update()
+
+    asyncio.run(telegram_input.handle_media(update, SimpleNamespace(bot=bot)))
+
+    with session_scope(session_factory) as session:
+        post_job = session.scalars(select(PostJob)).one()
+
+    assert post_job.mode == PostingMode.AUTO.value
+    assert post_job.status == PostJobStatus.PUBLISHING.value
+    assert bot.messages[0] == ("12345", "auto mode: 投稿処理へ進みます。job_id=1", None)
+    assert bot.messages[1] == ("12345", "受信しました。job_id=1 / media=1 / AI生成完了 / auto処理へ進行", None)
+
+
+def test_telegram_input_dry_run_mode_sends_plan_without_publishing(tmp_path: Path):
+    settings, session_factory, storage = _build_telegram_context(tmp_path, posting_mode=PostingMode.DRY_RUN)
+    telegram_input = TelegramInput(
+        settings=settings,
+        session_factory=session_factory,
+        storage=storage,
+        caption_generator=FakeCaptionGenerator(),
+    )
+    bot = FakeBot(content=_image_bytes(tmp_path / "dry-run.jpg"))
+    update = _photo_update()
+
+    asyncio.run(telegram_input.handle_media(update, SimpleNamespace(bot=bot)))
+
+    with session_scope(session_factory) as session:
+        post_job = session.scalars(select(PostJob)).one()
+
+    assert post_job.mode == PostingMode.DRY_RUN.value
+    assert post_job.status == PostJobStatus.PREVIEW_SENT.value
+    assert bot.messages[0][0] == "12345"
+    assert bot.messages[0][1].startswith("dry_run mode: Xへ投稿せず確認のみ行います。")
+    assert bot.messages[1] == ("12345", "受信しました。job_id=1 / media=1 / AI生成完了 / dry_run確認送信完了", None)
+
+
 def _build_telegram_input(tmp_path: Path, allowed_chat_ids: list[str] | None = None) -> TelegramInput:
+    settings, session_factory, storage = _build_telegram_context(
+        tmp_path,
+        allowed_chat_ids=allowed_chat_ids,
+    )
+    return TelegramInput(settings=settings, session_factory=session_factory, storage=storage)
+
+
+def _build_telegram_context(
+    tmp_path: Path,
+    *,
+    posting_mode: PostingMode = PostingMode.APPROVAL,
+    allowed_chat_ids: list[str] | None = None,
+):
     settings = Settings(
         _env_file=None,
         database_url=f"sqlite:///{tmp_path / 'app.sqlite3'}",
         storage_root=tmp_path / "storage",
+        posting_mode=posting_mode,
         telegram_allowed_chat_ids=allowed_chat_ids or [],
     )
     engine = create_app_engine(settings)
     init_db(engine)
     session_factory = create_session_factory(engine)
-    return TelegramInput(settings=settings, session_factory=session_factory, storage=LocalStorage(settings=settings))
+    return settings, session_factory, LocalStorage(settings=settings)
 
 
 def _image_bytes(path: Path) -> bytes:
     image = Image.new("RGB", (320, 240), (40, 90, 160))
     image.save(path, format="JPEG")
     return path.read_bytes()
+
+
+def _photo_update():
+    return SimpleNamespace(
+        effective_chat=SimpleNamespace(id=12345),
+        effective_user=SimpleNamespace(id=67890),
+        message=SimpleNamespace(
+            photo=[SimpleNamespace(file_id="photo-file-id", file_unique_id="photo-unique")],
+            video=None,
+            document=None,
+        ),
+    )
 
 
 class FakeCaptionGenerator:

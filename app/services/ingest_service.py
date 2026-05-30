@@ -38,6 +38,7 @@ class IngestService:
         chat_id: str,
         user_id: str | None,
         media_files: list[IncomingMediaFile],
+        mode: PostingMode | str | None = None,
     ) -> IngestResult:
         if not media_files:
             raise ValueError("media_filesは1件以上必要です")
@@ -46,7 +47,7 @@ class IngestService:
             source_type="telegram",
             source_chat_id=chat_id,
             source_user_id=user_id,
-            mode=self.settings.posting_mode,
+            mode=mode or self.settings.posting_mode,
         )
         media_assets = [
             self._save_and_register_media(post_job_id=post_job.id, media_file=media_file)

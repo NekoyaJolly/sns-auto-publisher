@@ -78,7 +78,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 6相当まで、以下を実装しています。
+PR 7相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -114,6 +114,10 @@ PR 6相当まで、以下を実装しています。
 - 投稿する押下時の `publishing` への状態更新
 - 再生成押下時のAI生成やり直しとプレビュー再送
 - 却下押下時の `rejected` への状態更新
+- `/mode` コマンドによる投稿モード確認
+- `/mode approval` / `/mode auto` / `/mode dry_run` による投稿モード変更
+- `app_settings` への投稿モード永続化
+- approval / auto / dry_run の処理分岐
 - 検証・処理結果のDB状態更新
 - 最小限のpytest
 
@@ -156,12 +160,24 @@ storage/thumbnails/<job_id>/<original_stem>.jpg
 
 `投稿する` は `post_jobs.status` を `publishing` に更新します。実際のX投稿はPR 8で実装予定です。`再生成` はAI生成をやり直して新しいプレビューを送信します。`却下` は `rejected` に更新します。
 
+## 投稿モード管理
+
+Telegramで `/mode` を送ると現在の投稿モードを確認できます。以下のコマンドでモードを変更できます。
+
+```text
+/mode approval
+/mode auto
+/mode dry_run
+```
+
+`approval` はプレビューと承認ボタンを返します。`auto` はAI生成後、warningsがなくcaptionがある場合に `publishing` へ進みます。実際のX投稿はPR 8で実装予定です。`dry_run` はXへ投稿せず、投稿予定内容だけをTelegramへ返します。
+
 ## 次PR候補
 
-次はPR 7として、投稿モード管理を実装します。
+次はPR 8として、X投稿を実装します。
 
-- `/mode` で現在モードを確認する
-- `/mode approval` でapprovalへ変更する
-- `/mode auto` でautoへ変更する
-- `/mode dry_run` でdry_runへ変更する
-- 各モードの処理分岐を接続する
+- 画像1枚をXへ投稿する
+- 複数画像をXへ投稿する
+- 動画をXへ投稿する
+- 投稿成功時に `x_post_id` を保存する
+- 投稿失敗時に `post_attempts` へ記録する
