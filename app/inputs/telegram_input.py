@@ -1,19 +1,22 @@
 from __future__ import annotations
 
 import logging
+import json
 from dataclasses import dataclass
 from typing import Any
 
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config.settings import Settings
-from app.db.models import PostJobStatus
+from app.db.models import PostJob, PostJobStatus, PostingMode
+from app.db.repository import Repository
 from app.db.session import session_scope
 from app.services.caption_service import CaptionGenerator, CaptionService
 from app.services.ingest_service import IncomingMediaFile, IngestService
 from app.services.media_process_service import MediaProcessService
+from app.services.mode_service import ModeService, posting_mode_help_text
 from app.services.notify_service import NotifyService, ReceiveNotification
-from app.services.preview_service import PreviewService
+from app.services.preview_service import PreviewService, build_preview_text
 from app.services.validation_service import ValidationService
 from app.storage.local_storage import LocalStorage
 
@@ -58,6 +61,7 @@ class TelegramInput:
 
         application = ApplicationBuilder().token(self.settings.telegram_bot_token).build()
         application.add_handler(CommandHandler("start", self.handle_start))
+        application.add_handler(CommandHandler("mode", self.handle_mode_command))
         application.add_handler(CallbackQueryHandler(self.handle_preview_callback, pattern=r"^post:"))
         application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, self.handle_media))
         logger.info("Telegram Botのpollingを開始します")
@@ -68,6 +72,30 @@ class TelegramInput:
         if chat_id is None:
             return
         await context.bot.send_message(chat_id=chat_id, text="SNS投稿オーケストレーターを起動しています。画像または動画を送信してください。")
+
+    async def handle_mode_command(self, update: Any, context: Any) -> None:
+        chat_id = self._chat_id(update)
+        if chat_id is None:
+            return
+        if not self.is_allowed_chat(chat_id):
+            await context.bot.send_message(chat_id=chat_id, text="許可されていないchat_idです")
+            return
+
+        args = [str(arg) for arg in getattr(context, "args", [])]
+        with session_scope(self.session_factory) as session:
+            mode_service = ModeService(session=session, settings=self.settings)
+            if not args:
+                await context.bot.send_message(chat_id=chat_id, text=posting_mode_help_text(mode_service.get_mode()))
+                return
+            try:
+                posting_mode = mode_service.set_mode(args[0])
+            except ValueError:
+                await context.bot.send_message(
+                    chat_id=chat_id,
+                    text="投稿モードは approval / auto / dry_run のいずれかを指定してください。",
+                )
+                return
+        await context.bot.send_message(chat_id=chat_id, text=f"投稿モードを {posting_mode.value} に変更しました")
 
     async def handle_media(self, update: Any, context: Any) -> None:
         chat_id = self._chat_id(update)
@@ -90,11 +118,13 @@ class TelegramInput:
         try:
             incoming_media = await self.download_media(context.bot, candidate)
             with session_scope(self.session_factory) as session:
+                current_mode = ModeService(session=session, settings=self.settings).get_mode()
                 ingest_service = IngestService(session=session, storage=self.storage, settings=self.settings)
                 result = ingest_service.ingest_telegram_media(
                     chat_id=chat_id,
                     user_id=user_id,
                     media_files=[incoming_media],
+                    mode=current_mode,
                 )
                 validation_results = ValidationService(session=session, settings=self.settings).validate_post_job(
                     result.post_job
@@ -124,7 +154,7 @@ class TelegramInput:
                 post_job_id = result.post_job.id
                 media_count = len(result.media_assets)
                 detail = "動画処理完了 / AI生成完了" if has_video else "AI生成完了"
-                if result.post_job.mode == "approval":
+                if result.post_job.mode == PostingMode.APPROVAL.value:
                     await PreviewService(
                         session=session,
                         settings=self.settings,
@@ -132,6 +162,13 @@ class TelegramInput:
                         caption_generator=self.caption_generator,
                     ).send_preview(chat_id, result.post_job)
                     detail = f"{detail} / プレビュー送信完了"
+                elif result.post_job.mode == PostingMode.AUTO.value:
+                    if not await self._handle_auto_mode(chat_id, result.post_job, messenger, session):
+                        return
+                    detail = f"{detail} / auto処理へ進行"
+                elif result.post_job.mode == PostingMode.DRY_RUN.value:
+                    await self._handle_dry_run_mode(chat_id, result.post_job, messenger, session)
+                    detail = f"{detail} / dry_run確認送信完了"
             await notify_service.notify_received(
                 chat_id,
                 ReceiveNotification(post_job_id=post_job_id, media_count=media_count, detail=detail),
@@ -139,6 +176,27 @@ class TelegramInput:
         except Exception as exc:
             logger.exception("Telegramメディア受信処理に失敗しました")
             await notify_service.notify_rejected(chat_id, str(exc))
+
+    async def _handle_auto_mode(self, chat_id: str, post_job: PostJob, messenger: TelegramBotMessenger, session: Session) -> bool:
+        warnings = json.loads(post_job.ai_warnings_json or "[]")
+        if warnings or not post_job.caption:
+            Repository(session).update_post_job_status(
+                post_job,
+                PostJobStatus.REJECTED,
+                error_message="auto投稿条件を満たしません",
+            )
+            await messenger.send_message(chat_id=chat_id, text="auto mode: 条件を満たさないため投稿を停止しました")
+            return False
+        Repository(session).update_post_job_status(post_job, PostJobStatus.PUBLISHING)
+        await messenger.send_message(chat_id=chat_id, text=f"auto mode: 投稿処理へ進みます。job_id={post_job.id}")
+        return True
+
+    async def _handle_dry_run_mode(self, chat_id: str, post_job: PostJob, messenger: TelegramBotMessenger, session: Session) -> None:
+        Repository(session).update_post_job_status(post_job, PostJobStatus.PREVIEW_SENT)
+        await messenger.send_message(
+            chat_id=chat_id,
+            text=f"dry_run mode: Xへ投稿せず確認のみ行います。\n\n{build_preview_text(post_job)}",
+        )
 
     async def handle_preview_callback(self, update: Any, context: Any) -> None:
         query = getattr(update, "callback_query", None)

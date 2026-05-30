@@ -222,6 +222,9 @@ class Repository:
         self.session.flush()
         return setting
 
+    def get_app_setting(self, key: str) -> AppSetting | None:
+        return self.session.get(AppSetting, key)
+
     @staticmethod
     def _media_error_summary(post_job: PostJob) -> str | None:
         messages = [
