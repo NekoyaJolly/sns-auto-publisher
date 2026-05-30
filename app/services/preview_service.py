@@ -11,6 +11,7 @@ from app.config.settings import Settings
 from app.db.models import PostJob, PostJobStatus
 from app.db.repository import Repository
 from app.services.caption_service import CaptionGenerator, CaptionService
+from app.services.publish_service import Publisher, PublishService
 
 
 class PreviewAction(StrEnum):
@@ -39,11 +40,13 @@ class PreviewService:
         settings: Settings,
         messenger: PreviewMessenger,
         caption_generator: CaptionGenerator | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
         self.repository = Repository(session)
         self.settings = settings
         self.messenger = messenger
         self.caption_generator = caption_generator
+        self.publisher = publisher
 
     async def send_preview(self, chat_id: str, post_job: PostJob) -> None:
         if post_job.status != PostJobStatus.CAPTIONED.value:
@@ -71,7 +74,15 @@ class PreviewService:
         if post_job.status != PostJobStatus.WAITING_APPROVAL.value:
             raise ValueError("承認できるpost_job状態ではありません")
         updated = self.repository.update_post_job_status(post_job, PostJobStatus.PUBLISHING)
-        await self.messenger.send_message(chat_id=chat_id, text=f"投稿処理へ進みます。job_id={post_job.id}")
+        result = PublishService(
+            session=self.repository.session,
+            settings=self.settings,
+            publisher=self.publisher,
+        ).publish_post_job(updated)
+        if result.is_success:
+            await self.messenger.send_message(chat_id=chat_id, text=f"投稿完了しました。job_id={post_job.id} / x_post_id={result.x_post_id}")
+        else:
+            await self.messenger.send_message(chat_id=chat_id, text=f"投稿に失敗しました。job_id={post_job.id} / reason={result.error_message}")
         return updated
 
     async def _regenerate(self, chat_id: str, post_job: PostJob) -> PostJob:

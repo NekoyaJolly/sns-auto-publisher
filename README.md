@@ -59,7 +59,7 @@ brew install ffmpeg
 cp .env.example .env
 ```
 
-初期状態では `POSTING_MODE=approval` です。TelegramからAI生成まで通す場合は `TELEGRAM_BOT_TOKEN` と `OPENAI_API_KEY` を設定してください。
+初期状態では `POSTING_MODE=approval` です。TelegramからAI生成まで通す場合は `TELEGRAM_BOT_TOKEN` と `OPENAI_API_KEY` を設定してください。X投稿まで通す場合は `X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` も設定してください。
 
 ## 起動方法
 
@@ -78,7 +78,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 7相当まで、以下を実装しています。
+PR 8相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -118,6 +118,11 @@ PR 7相当まで、以下を実装しています。
 - `/mode approval` / `/mode auto` / `/mode dry_run` による投稿モード変更
 - `app_settings` への投稿モード永続化
 - approval / auto / dry_run の処理分岐
+- X投稿publisher層
+- 画像1枚・複数画像・動画の投稿処理
+- 投稿成功時の `x_post_id` 保存
+- 投稿成功/失敗の `post_attempts` 記録
+- 投稿失敗時の `failed` 状態更新
 - 検証・処理結果のDB状態更新
 - 最小限のpytest
 
@@ -158,7 +163,7 @@ storage/thumbnails/<job_id>/<original_stem>.jpg
 - 再生成
 - 却下
 
-`投稿する` は `post_jobs.status` を `publishing` に更新します。実際のX投稿はPR 8で実装予定です。`再生成` はAI生成をやり直して新しいプレビューを送信します。`却下` は `rejected` に更新します。
+`投稿する` は `post_jobs.status` を `publishing` に更新し、X投稿へ進みます。投稿成功時は `published`、失敗時は `failed` に更新します。`再生成` はAI生成をやり直して新しいプレビューを送信します。`却下` は `rejected` に更新します。
 
 ## 投稿モード管理
 
@@ -170,14 +175,20 @@ Telegramで `/mode` を送ると現在の投稿モードを確認できます。
 /mode dry_run
 ```
 
-`approval` はプレビューと承認ボタンを返します。`auto` はAI生成後、warningsがなくcaptionがある場合に `publishing` へ進みます。実際のX投稿はPR 8で実装予定です。`dry_run` はXへ投稿せず、投稿予定内容だけをTelegramへ返します。
+`approval` はプレビューと承認ボタンを返します。`auto` はAI生成後、warningsがなくcaptionがある場合にX投稿へ進みます。`dry_run` はXへ投稿せず、投稿予定内容だけをTelegramへ返します。
+
+## X投稿仕様
+
+X投稿はTweepyを使い、投稿用メディアをアップロードして取得したmedia_idをPost作成時に添付します。画像は `tweet_image`、動画は `tweet_video` として扱います。動画はchunked uploadを使います。
+
+投稿成功時は `post_jobs.x_post_id` にX側の投稿IDを保存し、`post_jobs.status` を `published` にします。投稿失敗時は `post_attempts` に失敗理由を残し、`post_jobs.status` を `failed` にします。
 
 ## 次PR候補
 
-次はPR 8として、X投稿を実装します。
+次はPR 9として、通知 + リトライ + 重複防止を実装します。
 
-- 画像1枚をXへ投稿する
-- 複数画像をXへ投稿する
-- 動画をXへ投稿する
-- 投稿成功時に `x_post_id` を保存する
-- 投稿失敗時に `post_attempts` へ記録する
+- 投稿完了通知をTelegramへ返す
+- 投稿失敗通知をTelegramへ返す
+- file_hashで重複検知する
+- 投稿済みjobの二重投稿を防ぐ
+- `/retry <job_id>` と `/status <job_id>` を追加する

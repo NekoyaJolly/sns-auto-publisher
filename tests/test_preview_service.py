@@ -14,6 +14,7 @@ from app.services.preview_service import (
     build_preview_text,
     parse_preview_callback,
 )
+from app.publishers.x_publisher import XPublishResult
 
 
 class FakePreviewMessenger:
@@ -37,6 +38,16 @@ class FakeCaptionGenerator:
             warnings=[],
             should_post=True,
         )
+
+
+class FakePublisher:
+    def __init__(self, *, exc: Exception | None = None) -> None:
+        self.exc = exc
+
+    def publish(self, post_job):
+        if self.exc:
+            raise self.exc
+        return XPublishResult(x_post_id="x-123", media_ids=["media-1"])
 
 
 def test_preview_text_contains_caption_hashtags_alt_text_and_warnings(tmp_path: Path):
@@ -78,10 +89,18 @@ def test_approve_callback_sets_publishing(tmp_path: Path):
         post_job = _create_waiting_post_job(session)
         callback_data = build_preview_callback(PreviewAction.APPROVE, post_job.id)
 
-        updated = asyncio.run(PreviewService(session, settings, messenger).handle_callback("12345", callback_data))
+        updated = asyncio.run(
+            PreviewService(
+                session,
+                settings,
+                messenger,
+                publisher=FakePublisher(),
+            ).handle_callback("12345", callback_data)
+        )
 
-        assert updated.status == PostJobStatus.PUBLISHING.value
-        assert messenger.messages[-1] == ("12345", f"投稿処理へ進みます。job_id={post_job.id}", None)
+        assert updated.status == PostJobStatus.PUBLISHED.value
+        assert updated.x_post_id == "x-123"
+        assert messenger.messages[-1] == ("12345", f"投稿完了しました。job_id={post_job.id} / x_post_id=x-123", None)
 
 
 def test_reject_callback_sets_rejected(tmp_path: Path):

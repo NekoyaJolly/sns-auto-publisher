@@ -17,6 +17,7 @@ from app.services.media_process_service import MediaProcessService
 from app.services.mode_service import ModeService, posting_mode_help_text
 from app.services.notify_service import NotifyService, ReceiveNotification
 from app.services.preview_service import PreviewService, build_preview_text
+from app.services.publish_service import Publisher, PublishService
 from app.services.validation_service import ValidationService
 from app.storage.local_storage import LocalStorage
 
@@ -47,11 +48,13 @@ class TelegramInput:
         session_factory: sessionmaker[Session],
         storage: LocalStorage,
         caption_generator: CaptionGenerator | None = None,
+        publisher: Publisher | None = None,
     ) -> None:
         self.settings = settings
         self.session_factory = session_factory
         self.storage = storage
         self.caption_generator = caption_generator
+        self.publisher = publisher
 
     def run_polling(self) -> None:
         if not self.settings.telegram_bot_token:
@@ -160,6 +163,7 @@ class TelegramInput:
                         settings=self.settings,
                         messenger=messenger,
                         caption_generator=self.caption_generator,
+                        publisher=self.publisher,
                     ).send_preview(chat_id, result.post_job)
                     detail = f"{detail} / プレビュー送信完了"
                 elif result.post_job.mode == PostingMode.AUTO.value:
@@ -188,8 +192,16 @@ class TelegramInput:
             await messenger.send_message(chat_id=chat_id, text="auto mode: 条件を満たさないため投稿を停止しました")
             return False
         Repository(session).update_post_job_status(post_job, PostJobStatus.PUBLISHING)
-        await messenger.send_message(chat_id=chat_id, text=f"auto mode: 投稿処理へ進みます。job_id={post_job.id}")
-        return True
+        result = PublishService(
+            session=session,
+            settings=self.settings,
+            publisher=self.publisher,
+        ).publish_post_job(post_job)
+        if result.is_success:
+            await messenger.send_message(chat_id=chat_id, text=f"auto mode: 投稿完了しました。job_id={post_job.id} / x_post_id={result.x_post_id}")
+            return True
+        await messenger.send_message(chat_id=chat_id, text=f"auto mode: 投稿に失敗しました。job_id={post_job.id} / reason={result.error_message}")
+        return False
 
     async def _handle_dry_run_mode(self, chat_id: str, post_job: PostJob, messenger: TelegramBotMessenger, session: Session) -> None:
         Repository(session).update_post_job_status(post_job, PostJobStatus.PREVIEW_SENT)
@@ -217,6 +229,7 @@ class TelegramInput:
                     settings=self.settings,
                     messenger=messenger,
                     caption_generator=self.caption_generator,
+                    publisher=self.publisher,
                 ).handle_callback(chat_id, callback_data)
         except Exception as exc:
             logger.exception("Telegramプレビューcallback処理に失敗しました")

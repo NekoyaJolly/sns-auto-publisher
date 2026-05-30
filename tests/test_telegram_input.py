@@ -11,6 +11,7 @@ from app.db.repository import Repository
 from app.db.session import create_app_engine, create_session_factory, init_db, session_scope
 from app.inputs.telegram_input import TelegramInput
 from app.services.caption_service import CaptionPayload
+from app.publishers.x_publisher import XPublishResult
 from app.services.preview_service import PreviewAction, build_preview_callback
 from app.storage.local_storage import LocalStorage
 
@@ -42,6 +43,11 @@ class FakeCallbackQuery:
 
     async def answer(self) -> None:
         self.answered = True
+
+
+class FakePublisher:
+    def publish(self, post_job: PostJob) -> XPublishResult:
+        return XPublishResult(x_post_id="x-123", media_ids=["media-1"])
 
 
 def test_telegram_input_extracts_photo_candidate(tmp_path: Path):
@@ -141,6 +147,7 @@ def test_telegram_input_handles_approve_callback(tmp_path: Path):
         session_factory=session_factory,
         storage=LocalStorage(settings=settings),
         caption_generator=FakeCaptionGenerator(),
+        publisher=FakePublisher(),
     )
     bot = FakeBot(content=b"")
     callback_query = FakeCallbackQuery(build_preview_callback(PreviewAction.APPROVE, post_job_id))
@@ -156,8 +163,9 @@ def test_telegram_input_handles_approve_callback(tmp_path: Path):
         saved_job = Repository(session).require_post_job(post_job_id)
 
     assert callback_query.answered is True
-    assert saved_job.status == PostJobStatus.PUBLISHING.value
-    assert bot.messages == [("12345", f"投稿処理へ進みます。job_id={post_job_id}", None)]
+    assert saved_job.status == PostJobStatus.PUBLISHED.value
+    assert saved_job.x_post_id == "x-123"
+    assert bot.messages == [("12345", f"投稿完了しました。job_id={post_job_id} / x_post_id=x-123", None)]
 
 
 def test_telegram_input_mode_command_can_show_and_set_mode(tmp_path: Path):
@@ -182,6 +190,7 @@ def test_telegram_input_auto_mode_moves_to_publishing(tmp_path: Path):
         session_factory=session_factory,
         storage=storage,
         caption_generator=FakeCaptionGenerator(),
+        publisher=FakePublisher(),
     )
     bot = FakeBot(content=_image_bytes(tmp_path / "auto.jpg"))
     update = _photo_update()
@@ -192,8 +201,9 @@ def test_telegram_input_auto_mode_moves_to_publishing(tmp_path: Path):
         post_job = session.scalars(select(PostJob)).one()
 
     assert post_job.mode == PostingMode.AUTO.value
-    assert post_job.status == PostJobStatus.PUBLISHING.value
-    assert bot.messages[0] == ("12345", "auto mode: 投稿処理へ進みます。job_id=1", None)
+    assert post_job.status == PostJobStatus.PUBLISHED.value
+    assert post_job.x_post_id == "x-123"
+    assert bot.messages[0] == ("12345", "auto mode: 投稿完了しました。job_id=1 / x_post_id=x-123", None)
     assert bot.messages[1] == ("12345", "受信しました。job_id=1 / media=1 / AI生成完了 / auto処理へ進行", None)
 
 
