@@ -78,7 +78,7 @@ pytest
 
 ## 現在の実装範囲
 
-PR 5相当まで、以下を実装しています。
+PR 6相当まで、以下を実装しています。
 
 - Pythonプロジェクト基盤
 - `.env` 読み込みを前提にした設定管理
@@ -109,6 +109,11 @@ PR 5相当まで、以下を実装しています。
 - caption / hashtags / alt_text / warningsのDB保存
 - `should_post=false` 時のrejected記録
 - AI生成失敗時のfailed記録
+- Telegram投稿プレビュー送信
+- 投稿する / 再生成 / 却下のInline Keyboard callback処理
+- 投稿する押下時の `publishing` への状態更新
+- 再生成押下時のAI生成やり直しとプレビュー再送
+- 却下押下時の `rejected` への状態更新
 - 検証・処理結果のDB状態更新
 - 最小限のpytest
 
@@ -141,12 +146,22 @@ storage/thumbnails/<job_id>/<original_stem>.jpg
 
 生成結果はDBの `post_jobs.caption` / `hashtags_json` / `alt_text` / `ai_warnings_json` に保存します。JSON形式が不正な場合やAPI呼び出しに失敗した場合は `failed`、`should_post=false` の場合は `rejected` として理由をDBに残します。
 
+## Telegramプレビュー仕様
+
+`approval` modeでは、AI生成後にTelegramへ投稿プレビューを送信します。プレビューにはcaption、hashtags、alt_text、warningsを含め、以下のボタンを付けます。
+
+- 投稿する
+- 再生成
+- 却下
+
+`投稿する` は `post_jobs.status` を `publishing` に更新します。実際のX投稿はPR 8で実装予定です。`再生成` はAI生成をやり直して新しいプレビューを送信します。`却下` は `rejected` に更新します。
+
 ## 次PR候補
 
-次はPR 6として、Telegramプレビュー + 承認を実装します。
+次はPR 7として、投稿モード管理を実装します。
 
-- 投稿プレビューをTelegramへ返す
-- 投稿する / 再生成 / 却下ボタンを扱う
-- 承認時にpublishingへ進む
-- 再生成時にAI生成をやり直す
-- 却下時にrejectedへ更新する
+- `/mode` で現在モードを確認する
+- `/mode approval` でapprovalへ変更する
+- `/mode auto` でautoへ変更する
+- `/mode dry_run` でdry_runへ変更する
+- 各モードの処理分岐を接続する

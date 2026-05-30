@@ -76,6 +76,13 @@ class OpenAICaptionGenerator:
 
 
 class CaptionService:
+    allowed_statuses = {
+        PostJobStatus.PROCESSED.value,
+        PostJobStatus.CAPTIONED.value,
+        PostJobStatus.PREVIEW_SENT.value,
+        PostJobStatus.WAITING_APPROVAL.value,
+    }
+
     def __init__(
         self,
         session: Session,
@@ -87,8 +94,8 @@ class CaptionService:
         self.generator = generator
 
     def caption_post_job(self, post_job: PostJob) -> PostJob:
-        if post_job.status != PostJobStatus.PROCESSED.value:
-            raise ValueError("AI生成はprocessed状態のpost_jobのみ実行できます")
+        if post_job.status not in self.allowed_statuses:
+            raise ValueError("AI生成はprocessed/captioned/preview_sent/waiting_approval状態のpost_jobのみ実行できます")
 
         self.repository.update_post_job_status(post_job, PostJobStatus.CAPTIONING)
         try:
