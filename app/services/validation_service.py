@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from app.config.settings import Settings
 from app.db.models import MediaAsset, MediaAssetStatus, PostJob, PostJobStatus
 from app.db.repository import Repository
+from app.utils.ffmpeg_runner import FFmpegError, FFmpegRunner
 from app.utils.media_probe import probe_image
 from app.utils.mime_detect import media_type_from_mime
 
@@ -20,24 +21,24 @@ class MediaValidationResult:
 
 
 class ValidationService:
-    def __init__(self, session: Session, settings: Settings) -> None:
+    allowed_video_mime_types = {"video/mp4", "video/quicktime"}
+    allowed_video_extensions = {".mp4", ".mov"}
+
+    def __init__(self, session: Session, settings: Settings, ffmpeg_runner: FFmpegRunner | None = None) -> None:
         self.repository = Repository(session)
         self.settings = settings
+        self.ffmpeg_runner = ffmpeg_runner or FFmpegRunner()
 
     def validate_post_job(self, post_job: PostJob) -> list[MediaValidationResult]:
         self.repository.update_post_job_status(post_job, PostJobStatus.VALIDATING)
         results = [self.validate_media_asset(media_asset) for media_asset in post_job.media_assets]
-        if results and all(result.is_valid for result in results):
-            self.repository.update_post_job_status(post_job, PostJobStatus.VALIDATED)
-        else:
-            reason = "; ".join(result.reason or "検証に失敗しました" for result in results if not result.is_valid)
-            self.repository.update_post_job_status(post_job, PostJobStatus.FAILED, error_message=reason)
+        self.repository.update_post_job_status_from_media_assets(post_job)
         return results
 
     def validate_media_asset(self, media_asset: MediaAsset) -> MediaValidationResult:
         path = Path(media_asset.original_path)
         if not path.exists():
-            return self._reject(media_asset, "rawファイルが存在しません")
+            return self._fail(media_asset, "rawファイルが存在しません")
 
         expected_media_type = media_type_from_mime(media_asset.mime_type)
         if expected_media_type is None:
@@ -52,12 +53,7 @@ class ValidationService:
         if media_asset.media_type == "image":
             return self._validate_image(media_asset, path)
 
-        self.repository.update_media_asset_validation(
-            media_asset,
-            status=MediaAssetStatus.VALIDATED,
-            error_message=None,
-        )
-        return MediaValidationResult(media_asset_id=media_asset.id, is_valid=True)
+        return self._validate_video(media_asset, path)
 
     def _validate_image(self, media_asset: MediaAsset, path: Path) -> MediaValidationResult:
         try:
@@ -70,6 +66,33 @@ class ValidationService:
             status=MediaAssetStatus.VALIDATED,
             width=image_info.width,
             height=image_info.height,
+            error_message=None,
+        )
+        return MediaValidationResult(media_asset_id=media_asset.id, is_valid=True)
+
+    def _validate_video(self, media_asset: MediaAsset, path: Path) -> MediaValidationResult:
+        if media_asset.mime_type not in self.allowed_video_mime_types:
+            return self._reject(media_asset, "対応していない動画MIME typeです")
+        if path.suffix.lower() not in self.allowed_video_extensions:
+            return self._reject(media_asset, "対応していない動画拡張子です")
+
+        try:
+            video_info = self.ffmpeg_runner.probe_video(path)
+        except FFmpegError as exc:
+            return self._fail(media_asset, str(exc))
+
+        if video_info.duration_seconds > self.settings.max_video_duration_seconds:
+            return self._reject(
+                media_asset,
+                f"動画秒数が上限{self.settings.max_video_duration_seconds}秒を超えています",
+            )
+
+        self.repository.update_media_asset_validation(
+            media_asset,
+            status=MediaAssetStatus.VALIDATED,
+            width=video_info.width,
+            height=video_info.height,
+            duration_seconds=video_info.duration_seconds,
             error_message=None,
         )
         return MediaValidationResult(media_asset_id=media_asset.id, is_valid=True)

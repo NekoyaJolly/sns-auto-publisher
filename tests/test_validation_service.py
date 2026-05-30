@@ -61,7 +61,7 @@ def test_validation_service_rejects_non_media_mime(tmp_path: Path):
         validation_results = validation_service.validate_post_job(result.post_job)
 
         assert validation_results[0].is_valid is False
-        assert result.post_job.status == PostJobStatus.FAILED.value
+        assert result.post_job.status == PostJobStatus.REJECTED.value
         assert result.media_assets[0].status == MediaAssetStatus.REJECTED.value
         assert "画像または動画以外" in (result.media_assets[0].error_message or "")
 

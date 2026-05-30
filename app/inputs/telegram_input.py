@@ -7,6 +7,7 @@ from typing import Any
 from sqlalchemy.orm import Session, sessionmaker
 
 from app.config.settings import Settings
+from app.db.models import PostJobStatus
 from app.db.session import session_scope
 from app.services.ingest_service import IncomingMediaFile, IngestService
 from app.services.media_process_service import MediaProcessService
@@ -100,14 +101,18 @@ class TelegramInput:
                     await notify_service.notify_rejected(chat_id, reason)
                     return
 
-                if any(media_asset.media_type == "image" for media_asset in result.media_assets):
-                    MediaProcessService(session=session, storage=self.storage).process_post_job_images(result.post_job)
+                has_video = any(media_asset.media_type == "video" for media_asset in result.media_assets)
+                MediaProcessService(session=session, storage=self.storage).process_post_job_media(result.post_job)
+                if result.post_job.status in {PostJobStatus.FAILED.value, PostJobStatus.REJECTED.value}:
+                    await notify_service.notify_rejected(chat_id, result.post_job.error_message or "メディア処理に失敗しました")
+                    return
 
                 post_job_id = result.post_job.id
                 media_count = len(result.media_assets)
+                detail = "動画処理完了" if has_video else None
             await notify_service.notify_received(
                 chat_id,
-                ReceiveNotification(post_job_id=post_job_id, media_count=media_count),
+                ReceiveNotification(post_job_id=post_job_id, media_count=media_count, detail=detail),
             )
         except Exception as exc:
             logger.exception("Telegramメディア受信処理に失敗しました")
