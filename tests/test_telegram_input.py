@@ -203,7 +203,7 @@ def test_telegram_input_auto_mode_moves_to_publishing(tmp_path: Path):
     assert post_job.mode == PostingMode.AUTO.value
     assert post_job.status == PostJobStatus.PUBLISHED.value
     assert post_job.x_post_id == "x-123"
-    assert bot.messages[0] == ("12345", "auto mode: 投稿完了しました。job_id=1 / x_post_id=x-123", None)
+    assert bot.messages[0] == ("12345", "投稿完了しました。job_id=1 / x_post_id=x-123", None)
     assert bot.messages[1] == ("12345", "受信しました。job_id=1 / media=1 / AI生成完了 / auto処理へ進行", None)
 
 
@@ -228,6 +228,48 @@ def test_telegram_input_dry_run_mode_sends_plan_without_publishing(tmp_path: Pat
     assert bot.messages[0][0] == "12345"
     assert bot.messages[0][1].startswith("dry_run mode: Xへ投稿せず確認のみ行います。")
     assert bot.messages[1] == ("12345", "受信しました。job_id=1 / media=1 / AI生成完了 / dry_run確認送信完了", None)
+
+
+def test_telegram_input_status_command_returns_job_state(tmp_path: Path):
+    settings, session_factory, storage = _build_telegram_context(tmp_path)
+    with session_scope(session_factory) as session:
+        post_job = _create_waiting_post_job(session)
+        post_job_id = post_job.id
+
+    telegram_input = TelegramInput(settings=settings, session_factory=session_factory, storage=storage)
+    bot = FakeBot(content=b"")
+    update = SimpleNamespace(effective_chat=SimpleNamespace(id=12345), effective_user=SimpleNamespace(id=67890))
+
+    asyncio.run(telegram_input.handle_status_command(update, SimpleNamespace(bot=bot, args=[str(post_job_id)])))
+
+    assert f"job_id={post_job_id}" in bot.messages[0][1]
+    assert "status=waiting_approval" in bot.messages[0][1]
+    assert "media=1" in bot.messages[0][1]
+
+
+def test_telegram_input_retry_command_republishes_failed_job(tmp_path: Path):
+    settings, session_factory, storage = _build_telegram_context(tmp_path)
+    with session_scope(session_factory) as session:
+        post_job = _create_failed_publishable_post_job(session)
+        post_job_id = post_job.id
+
+    telegram_input = TelegramInput(
+        settings=settings,
+        session_factory=session_factory,
+        storage=storage,
+        publisher=FakePublisher(),
+    )
+    bot = FakeBot(content=b"")
+    update = SimpleNamespace(effective_chat=SimpleNamespace(id=12345), effective_user=SimpleNamespace(id=67890))
+
+    asyncio.run(telegram_input.handle_retry_command(update, SimpleNamespace(bot=bot, args=[str(post_job_id)])))
+
+    with session_scope(session_factory) as session:
+        saved_job = Repository(session).require_post_job(post_job_id)
+
+    assert saved_job.status == PostJobStatus.PUBLISHED.value
+    assert saved_job.x_post_id == "x-123"
+    assert bot.messages == [("12345", f"投稿完了しました。job_id={post_job_id} / x_post_id=x-123", None)]
 
 
 def _build_telegram_input(tmp_path: Path, allowed_chat_ids: list[str] | None = None) -> TelegramInput:
@@ -313,3 +355,8 @@ def _create_waiting_post_job(session):
         status=PostJobStatus.CAPTIONED,
     )
     return repository.update_post_job_status(post_job, PostJobStatus.WAITING_APPROVAL)
+
+
+def _create_failed_publishable_post_job(session):
+    post_job = _create_waiting_post_job(session)
+    return Repository(session).update_post_job_status(post_job, PostJobStatus.FAILED, error_message="前回投稿失敗")

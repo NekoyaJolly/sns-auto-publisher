@@ -11,6 +11,7 @@ from app.config.settings import Settings
 from app.db.models import PostJob, PostJobStatus
 from app.db.repository import Repository
 from app.services.caption_service import CaptionGenerator, CaptionService
+from app.services.notify_service import NotifyService
 from app.services.publish_service import Publisher, PublishService
 
 
@@ -80,9 +81,17 @@ class PreviewService:
             publisher=self.publisher,
         ).publish_post_job(updated)
         if result.is_success:
-            await self.messenger.send_message(chat_id=chat_id, text=f"投稿完了しました。job_id={post_job.id} / x_post_id={result.x_post_id}")
+            await NotifyService(self.messenger).notify_published(
+                chat_id,
+                post_job_id=post_job.id,
+                x_post_id=result.x_post_id,
+            )
         else:
-            await self.messenger.send_message(chat_id=chat_id, text=f"投稿に失敗しました。job_id={post_job.id} / reason={result.error_message}")
+            await NotifyService(self.messenger).notify_failed(
+                chat_id,
+                post_job_id=post_job.id,
+                reason=result.error_message,
+            )
         return updated
 
     async def _regenerate(self, chat_id: str, post_job: PostJob) -> PostJob:

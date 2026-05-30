@@ -1,7 +1,9 @@
+from hashlib import sha256
 from pathlib import Path
 
 from app.config.settings import Settings
-from app.db.models import MediaAssetStatus, PostingMode
+from app.db.models import MediaAssetStatus, PostJobStatus, PostingMode
+from app.db.repository import Repository
 from app.db.session import create_app_engine, create_session_factory, init_db, session_scope
 from app.services.ingest_service import IncomingMediaFile, IngestService
 from app.storage.local_storage import LocalStorage
@@ -69,3 +71,48 @@ def test_ingest_service_rejects_empty_media_files(tmp_path: Path):
             assert "media_files" in str(exc)
         else:
             raise AssertionError("media_filesが空ならValueErrorにする必要があります")
+
+
+def test_ingest_service_rejects_duplicate_published_media(tmp_path: Path):
+    settings = Settings(
+        _env_file=None,
+        database_url=f"sqlite:///{tmp_path / 'app.sqlite3'}",
+        storage_root=tmp_path / "storage",
+    )
+    engine = create_app_engine(settings)
+    init_db(engine)
+    session_factory = create_session_factory(engine)
+    storage = LocalStorage(settings=settings)
+    content = b"duplicate image bytes"
+    file_hash = sha256(content).hexdigest()
+
+    with session_scope(session_factory) as session:
+        repository = Repository(session)
+        existing_job = repository.create_post_job(source_type="telegram", status=PostJobStatus.PUBLISHED)
+        repository.create_media_asset(
+            post_job_id=existing_job.id,
+            original_path="storage/raw/1/photo.jpg",
+            media_type="image",
+            mime_type="image/jpeg",
+            file_hash=file_hash,
+            file_size=len(content),
+            status=MediaAssetStatus.PROCESSED,
+        )
+
+        service = IngestService(session=session, storage=storage, settings=settings)
+        result = service.ingest_telegram_media(
+            chat_id="12345",
+            user_id="67890",
+            media_files=[
+                IncomingMediaFile(
+                    filename="photo.jpg",
+                    content=content,
+                    media_type="image",
+                    mime_type="image/jpeg",
+                )
+            ],
+        )
+
+        assert result.post_job.status == PostJobStatus.REJECTED.value
+        assert result.media_assets[0].status == MediaAssetStatus.REJECTED.value
+        assert f"existing_job_id={existing_job.id}" in (result.post_job.error_message or "")

@@ -28,3 +28,11 @@ class NotifyService:
 
     async def notify_rejected(self, chat_id: str, reason: str) -> None:
         await self.messenger.send_message(chat_id=chat_id, text=f"受信できませんでした: {reason}")
+
+    async def notify_published(self, chat_id: str, *, post_job_id: int, x_post_id: str | None) -> None:
+        x_post = x_post_id or "unknown"
+        await self.messenger.send_message(chat_id=chat_id, text=f"投稿完了しました。job_id={post_job_id} / x_post_id={x_post}")
+
+    async def notify_failed(self, chat_id: str, *, post_job_id: int, reason: str | None) -> None:
+        message = reason or "理由不明のエラーです"
+        await self.messenger.send_message(chat_id=chat_id, text=f"投稿に失敗しました。job_id={post_job_id} / reason={message}")

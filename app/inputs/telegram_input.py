@@ -18,6 +18,8 @@ from app.services.mode_service import ModeService, posting_mode_help_text
 from app.services.notify_service import NotifyService, ReceiveNotification
 from app.services.preview_service import PreviewService, build_preview_text
 from app.services.publish_service import Publisher, PublishService
+from app.services.retry_service import RetryService
+from app.services.status_service import StatusService
 from app.services.validation_service import ValidationService
 from app.storage.local_storage import LocalStorage
 
@@ -65,6 +67,8 @@ class TelegramInput:
         application = ApplicationBuilder().token(self.settings.telegram_bot_token).build()
         application.add_handler(CommandHandler("start", self.handle_start))
         application.add_handler(CommandHandler("mode", self.handle_mode_command))
+        application.add_handler(CommandHandler("retry", self.handle_retry_command))
+        application.add_handler(CommandHandler("status", self.handle_status_command))
         application.add_handler(CallbackQueryHandler(self.handle_preview_callback, pattern=r"^post:"))
         application.add_handler(MessageHandler(filters.PHOTO | filters.VIDEO | filters.Document.ALL, self.handle_media))
         logger.info("Telegram Botのpollingを開始します")
@@ -129,6 +133,10 @@ class TelegramInput:
                     media_files=[incoming_media],
                     mode=current_mode,
                 )
+                if result.post_job.status in {PostJobStatus.FAILED.value, PostJobStatus.REJECTED.value}:
+                    await notify_service.notify_rejected(chat_id, result.post_job.error_message or "受信処理に失敗しました")
+                    return
+
                 validation_results = ValidationService(session=session, settings=self.settings).validate_post_job(
                     result.post_job
                 )
@@ -198,9 +206,9 @@ class TelegramInput:
             publisher=self.publisher,
         ).publish_post_job(post_job)
         if result.is_success:
-            await messenger.send_message(chat_id=chat_id, text=f"auto mode: 投稿完了しました。job_id={post_job.id} / x_post_id={result.x_post_id}")
+            await NotifyService(messenger).notify_published(chat_id, post_job_id=post_job.id, x_post_id=result.x_post_id)
             return True
-        await messenger.send_message(chat_id=chat_id, text=f"auto mode: 投稿に失敗しました。job_id={post_job.id} / reason={result.error_message}")
+        await NotifyService(messenger).notify_failed(chat_id, post_job_id=post_job.id, reason=result.error_message)
         return False
 
     async def _handle_dry_run_mode(self, chat_id: str, post_job: PostJob, messenger: TelegramBotMessenger, session: Session) -> None:
@@ -234,6 +242,59 @@ class TelegramInput:
         except Exception as exc:
             logger.exception("Telegramプレビューcallback処理に失敗しました")
             await messenger.send_message(chat_id=chat_id, text=f"操作に失敗しました: {exc}")
+
+    async def handle_retry_command(self, update: Any, context: Any) -> None:
+        chat_id = self._chat_id(update)
+        if chat_id is None:
+            return
+        messenger = TelegramBotMessenger(context.bot)
+        notify_service = NotifyService(messenger)
+        if not self.is_allowed_chat(chat_id):
+            await notify_service.notify_rejected(chat_id, "許可されていないchat_idです")
+            return
+
+        post_job_id = self._post_job_id_arg(context)
+        if post_job_id is None:
+            await messenger.send_message(chat_id=chat_id, text="使い方: /retry <job_id>")
+            return
+
+        try:
+            with session_scope(self.session_factory) as session:
+                result = RetryService(
+                    session=session,
+                    settings=self.settings,
+                    publisher=self.publisher,
+                ).retry_post_job(post_job_id)
+                if result.is_success:
+                    await notify_service.notify_published(chat_id, post_job_id=post_job_id, x_post_id=result.x_post_id)
+                    return
+                await notify_service.notify_failed(chat_id, post_job_id=post_job_id, reason=result.error_message)
+        except Exception as exc:
+            logger.exception("Telegram retry処理に失敗しました")
+            await notify_service.notify_failed(chat_id, post_job_id=post_job_id, reason=str(exc))
+
+    async def handle_status_command(self, update: Any, context: Any) -> None:
+        chat_id = self._chat_id(update)
+        if chat_id is None:
+            return
+        messenger = TelegramBotMessenger(context.bot)
+        notify_service = NotifyService(messenger)
+        if not self.is_allowed_chat(chat_id):
+            await notify_service.notify_rejected(chat_id, "許可されていないchat_idです")
+            return
+
+        post_job_id = self._post_job_id_arg(context)
+        if post_job_id is None:
+            await messenger.send_message(chat_id=chat_id, text="使い方: /status <job_id>")
+            return
+
+        try:
+            with session_scope(self.session_factory) as session:
+                text = StatusService(session).build_status_text(post_job_id)
+            await messenger.send_message(chat_id=chat_id, text=text)
+        except Exception as exc:
+            logger.exception("Telegram status処理に失敗しました")
+            await messenger.send_message(chat_id=chat_id, text=f"状態確認に失敗しました: {exc}")
 
     def is_allowed_chat(self, chat_id: str) -> bool:
         if not self.settings.telegram_allowed_chat_ids:
@@ -293,6 +354,16 @@ class TelegramInput:
         if mime_type is None:
             return False
         return mime_type.startswith("image/") or mime_type.startswith("video/")
+
+    @staticmethod
+    def _post_job_id_arg(context: Any) -> int | None:
+        args = [str(arg) for arg in getattr(context, "args", [])]
+        if len(args) != 1:
+            return None
+        try:
+            return int(args[0])
+        except ValueError:
+            return None
 
     @staticmethod
     def _chat_id(update: Any) -> str | None:
