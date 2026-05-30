@@ -62,6 +62,7 @@ cp .env.example .env
 初期状態では `POSTING_MODE=approval` です。まず安全に動作確認する場合は `POSTING_MODE=dry_run` に変更してください。dry_runではXへ投稿せず、投稿予定内容だけをTelegramへ返します。
 
 主な環境変数は以下です。秘密情報は `.env` にだけ保存し、コードやREADMEへ直接書かないでください。
+ChatGPTやCodexのプロンプトにも貼らないでください。`.env` はGit管理対象外です。
 
 | 変数 | 用途 |
 | --- | --- |
@@ -79,6 +80,14 @@ cp .env.example .env
 | `MAX_IMAGE_SIZE_MB` | 画像サイズ上限 |
 | `MAX_VIDEO_SIZE_MB` | 動画サイズ上限 |
 | `MAX_VIDEO_DURATION_SECONDS` | 動画秒数上限 |
+
+`.env` の検収向けチェックは以下で実行できます。秘密情報の値は表示せず、設定済み/未設定だけを表示します。
+
+```bash
+python -m app.tools.check_env
+```
+
+`POSTING_MODE=dry_run` ではX API Key類が未設定でもOKです。`approval` / `auto` では `X_API_KEY` / `X_API_SECRET` / `X_ACCESS_TOKEN` / `X_ACCESS_TOKEN_SECRET` が必須です。
 
 ## 起動方法
 
@@ -112,11 +121,57 @@ dry_runではX API認証情報が未設定でもX投稿は実行されません�
 
 1. TelegramでBotFatherを開き、新しいBotを作成します。
 2. 発行されたTokenを `.env` の `TELEGRAM_BOT_TOKEN` に設定します。
-3. Botへ `/start` を送信して会話を開始します。
-4. 必要に応じて許可するchat_idを `TELEGRAM_ALLOWED_CHAT_IDS=12345,67890` の形式で設定します。
-5. `python -m app.main` でpollingを開始します。
+3. `python -m app.tools.telegram_chat_id --write-env` を実行します。
+4. 画面の案内に従って、Telegramで対象Botへ `/start` または `test` を送ります。
+5. 検出された `chat_id` が `.env` の `TELEGRAM_ALLOWED_CHAT_IDS` に自動反映されます。
+6. `python -m app.main` でpollingを開始します。
 
 許可chat_idを空にすると、MVPではすべてのchat_idを許可します。実運用では必ず許可chat_idを設定してください。
+
+### `TELEGRAM_ALLOWED_CHAT_IDS` の自動取得
+
+Bot Tokenを `.env` に設定した後、以下を実行するとTelegramのJSONを手で読まずに `chat_id` を確認できます。
+
+```bash
+python -m app.tools.telegram_chat_id
+```
+
+`.env` の `TELEGRAM_ALLOWED_CHAT_IDS` まで更新する場合は `--write-env` を付けます。
+
+```bash
+python -m app.tools.telegram_chat_id --write-env
+```
+
+必要に応じて待機時間やpolling間隔も変更できます。
+
+```bash
+python -m app.tools.telegram_chat_id --write-env --timeout 120 --poll-interval 2
+```
+
+通常はWebhook設定を変更しません。Webhookを使っていたBotで `getUpdates` が使えない場合だけ、明示的に以下を実行してください。
+
+```bash
+python -m app.tools.telegram_chat_id --clear-webhook
+```
+
+`python -m app.main` でBotがすでに起動中の場合、updatesが先に消費されて `chat_id` を検出できないことがあります。その場合はBotを停止し、TelegramでBotに `/start` または `test` を送ってから再実行してください。
+
+Bot起動後にTelegram上で確認したい場合は、以下のコマンドも使えます。
+
+```text
+/whoami
+```
+
+返答例:
+
+```text
+chat_id=123456789
+user_id=987654321
+```
+
+`/whoami` は許可リストを作るための確認コマンドなので、`TELEGRAM_ALLOWED_CHAT_IDS` が未設定、または自分のchat_idがまだ許可されていない状態でも実行できます。
+
+秘密情報である `TELEGRAM_BOT_TOKEN` やAPI KeyはChatGPT/Codexのプロンプトに貼らず、`.env` にだけ保存してください。`.env` はGit管理対象外です。
 
 ## X API設定手順
 
@@ -141,6 +196,7 @@ Telegramから以下のコマンドを使えます。
 /mode approval
 /mode auto
 /mode dry_run
+/whoami
 /status <job_id>
 /retry <job_id>
 ```
@@ -187,6 +243,10 @@ PR 10相当まで、以下を実装しています。
 - 却下押下時の `rejected` への状態更新
 - `/mode` コマンドによる投稿モード確認
 - `/mode approval` / `/mode auto` / `/mode dry_run` による投稿モード変更
+- `/whoami` コマンドによるchat_id / user_id確認
+- `python -m app.tools.check_env` によるMVP検収向けenv確認
+- `python -m app.tools.telegram_chat_id` によるchat_id取得補助
+- `python -m app.tools.telegram_chat_id --write-env` による `TELEGRAM_ALLOWED_CHAT_IDS` 自動更新
 - `app_settings` への投稿モード永続化
 - approval / auto / dry_run の処理分岐
 - X投稿publisher層
