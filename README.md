@@ -295,6 +295,15 @@ storage/thumbnails/<job_id>/<original_stem>.jpg
 
 生成結果はDBの `post_jobs.caption` / `hashtags_json` / `alt_text` / `ai_warnings_json` に保存します。JSON形式が不正な場合やAPI呼び出しに失敗した場合は `failed`、`should_post=false` の場合は `rejected` として理由をDBに残します。
 
+caption生成のプロンプト本文はコードから外部化し、以下のMarkdownで管理します。
+
+```text
+app/prompts/caption/system.ja.md
+app/prompts/caption/user.ja.md
+```
+
+投稿文の観察ルール、文体、禁止事項を調整する場合は、Pythonコードではなく上記Markdownを編集してください。`user.ja.md` では `{posting_mode}` と `{media_summary}` をplaceholderとして使えます。
+
 ## Telegramプレビュー仕様
 
 `approval` modeでは、AI生成後にTelegramへ投稿プレビューを送信します。プレビューにはcaption、hashtags、alt_text、warningsを含め、以下のボタンを付けます。

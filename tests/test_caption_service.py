@@ -14,6 +14,7 @@ from app.services.caption_service import (
     build_caption_prompt,
     parse_caption_payload,
 )
+from app.services.prompt_loader import CaptionPromptLoader
 
 
 class FakeCaptionGenerator:
@@ -136,7 +137,7 @@ def test_build_caption_input_includes_processed_image_bytes(tmp_path: Path):
 
     user_content = request_input[1]["content"]
     assert isinstance(user_content, list)
-    assert "具体物・色・配置・状態" in str(request_input[0]["content"])
+    assert "具体物、色、配置、状態" in str(request_input[0]["content"])
     image_part = user_content[1]
     assert image_part["type"] == "input_image"
     assert image_part["detail"] == "high"
@@ -185,6 +186,25 @@ def test_build_caption_input_requires_visual_file(tmp_path: Path):
 
         with pytest.raises(ValueError, match="画像または動画サムネイル"):
             build_caption_input(prompt, post_job)
+
+
+def test_build_caption_prompt_loads_markdown_templates(tmp_path: Path):
+    prompt_dir = tmp_path / "prompts" / "caption"
+    prompt_dir.mkdir(parents=True)
+    (prompt_dir / "system.ja.md").write_text("system prompt", encoding="utf-8")
+    (prompt_dir / "user.ja.md").write_text(
+        "mode={posting_mode}\nmedia={media_summary}",
+        encoding="utf-8",
+    )
+    settings, session_factory = _build_context(tmp_path)
+
+    with session_scope(session_factory) as session:
+        post_job = _create_processed_post_job(session)
+        prompt = build_caption_prompt(post_job, prompt_loader=CaptionPromptLoader(prompt_dir))
+
+    assert prompt.system == "system prompt"
+    assert "mode=approval" in prompt.user
+    assert "type=image" in prompt.user
 
 
 def _build_context(tmp_path: Path):
